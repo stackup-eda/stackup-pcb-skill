@@ -13,7 +13,10 @@ and others. `CLAUDE.md` and `GEMINI.md` just import this file; edit this one.
   Python runs.
 - New script logic gets unit tests in `tests/`. Run `python3 -m unittest discover -s tests -v`
   before opening a PR. Network lookups are tested with fixtures, not live calls.
-- Test prompts for evaluating the skill live in `evals/evals.json`.
+- Keep documented examples runnable: `tests/test_docs.py` checks the Stackup example in
+  `references/stackup.md` with the real CLI. Change the example and the test together.
+- Test prompts for evaluating the skill live in `evals/evals.json`; results go in the gitignored
+  `pcb-design-workspace/`.
 - Keep the skill **harness-neutral**. No harness-specific tool names (say "a web search tool", not a
   product's tool name), no instructions that assume one agent. Harness-specific packaging (e.g.
   `.claude-plugin/`) lives outside `skills/`.

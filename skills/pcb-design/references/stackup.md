@@ -95,29 +95,44 @@ in every version. The main commands:
 
 ## 3. Writing a design
 
+This example passes `stackup check --locked` with 0 errors, 0 warnings and 0 notes against the
+library pinned at `9120a03` (a test in this skill's repo checks it):
+
 ```kdl
 use "@stackup/passives"
+use "@stackup/discrete/fet/ao3401a"
 use "@stackup/power/buck/tlv62569"
-use "./parts.kdl"
+use "@stackup/connector/jst-ph"
 
-design my_board {
+design example {
     stock { packages imperial="0402" }   // default package for generic passives
 
-    place tlv62569 "U_BUCK1" designator="U_BUCK1" manufacturer="Texas Instruments" \
-        mpn="TLV62569DBVR" lcsc="C141836" value="TLV62569DBVR"
-    place pull-down "R_EN_PD1" value="100kΩ" manufacturer="UNI-ROYAL(Uniroyal Elec)" \
-        mpn="0402WGF1003TCE" lcsc="C25741"
-    place capacitor "C_OUT1" value="22µF" footprint="Capacitor_SMD:C_0805_2012Metric"
+    place jst-ph-2 "BT1" footprint="Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal" \
+        manufacturer="JST" mpn="S2B-PH-K(LF)(SN)" lcsc="C265016" value="PH 2-pin RIGHT-ANGLE" hand=#true
+    place ao3401a "Q_PWR1" footprint="Package_TO_SOT_SMD:SOT-23" \
+        manufacturer="Alpha & Omega Semicon" mpn="AO3401A" lcsc="C15127" value="AO3401A"
+    place pull-down "R_EN_PD1" footprint="Resistor_SMD:R_0402_1005Metric" \
+        manufacturer="UNI-ROYAL(Uniroyal Elec)" mpn="0402WGF1003TCE" lcsc="C25741" value="100kΩ"
+    place tlv62569 "U_BUCK1" footprint="Package_TO_SOT_SMD:SOT-23-5" \
+        manufacturer="Texas Instruments" mpn="TLV62569DBVR" lcsc="C141836" value="TLV62569DBVR"
 
+    circuit "BT1.1" "Q_PWR1.SOURCE" "U_BUCK1.VIN" name="VBAT"
+    set "U_BUCK1.VIN" net.voltage min="3.0V" max="4.2V"   // checked against the buck's VIN range
     circuit "Q_PWR1.DRAIN" "R_EN_PD1.node" "U_BUCK1.EN" name="PWR_EN"
-    set "C_OUT1.A" net.voltage "3.3V"
-    nc "U_MCU1.IO45"
+    circuit "BT1.2" "R_EN_PD1.rail.gnd" "U_BUCK1.GND" name="GND"   // a shunt block's return: rail.gnd
+    circuit "Q_PWR1.GATE" name="PWR_GATE"
+    nc "U_BUCK1.SW" "U_BUCK1.FB" note="example only: the inductor and divider are left out"
 }
 ```
 
 Key ideas (SPEC sections in brackets):
 
-- **Order carries no meaning.** Every statement is a fact about the circuit.
+- **Order carries no meaning**, with one exception in 0.1.3: a port argument on `place`
+  (`vcc=V5.out`) can only name a placement declared above it (see Gotchas).
+- **Facts stay on their net.** A voltage stated on the battery net doesn't pass through a switch or
+  series part, so `set … net.voltage` goes on the net whose requirement should read it.
+- **Shunt blocks** (`pull-up`, `pull-down`, `decouple`) connect through `.node` and their return
+  through `.rail.gnd` (or `rail=` as a port argument).
 - **`place <part-or-block> <name> key=value…`** instantiates. Generic parts take `value=`,
   `intent=` (`decouple`, `bypass`, `bulk`, `filter`, `pull-up`, `pull-down`, `timing`, `series`,
   `divider`) and `note=`. `package=` selects a non-default package. `hand=#true` marks a
@@ -143,8 +158,21 @@ Key ideas (SPEC sections in brackets):
 
 ## 4. Parts and library blocks
 
-- Look in the library first (`connector/`, `discrete/`, `micro/`, `power/`, `sensor/`, …). Library
-  parts carry pin requirements, strap roles and default support blocks (decoupling, pulls).
+- Look in the library first. List what it offers instead of reading its files:
+  ```sh
+  python3 <skill>/scripts/stackup_index.py buck      # parts/blocks whose path, name or description match
+  ```
+  It prints each part's packages, orderable MPN and features (`*` = on by default), and each
+  block's parameters with defaults, from the library pinned in `manifest.kdl` (run `stackup check`
+  once first so it's in the cache). Library parts carry pin requirements, strap roles and default
+  support blocks (decoupling, pulls).
+- **Library blocks can't carry MPNs for the parts they place** (issue
+  [#2](https://github.com/stackup-eda/stackup/issues/2)): `tlv62569-buck`'s inductor, capacitors and
+  divider reach the BOM with no manufacturer, MPN or LCSC, and no board statement can add them.
+  Until that's fixed, when a board needs a complete BOM: copy the block into `parts.kdl` under a
+  local name and add `manufacturer=`/`mpn=`/`lcsc=` to each child placement; for a part's default
+  support blocks, turn them off with `without` and place the equivalent parts yourself. Keep the
+  library block's comments and asserts, and note the issue in a comment so it can be undone.
 - Turn off a default support block with `{ without <feature> }` only when the board provides that
   function another way, and say which way in a comment.
 - `ignore "<fact>" reason="…"` suppresses a specific check. Use it only with a real reason that can
@@ -185,6 +213,15 @@ gate or that a transient lifts a latch.
   with KiCad's Python. It applies the sync in memory and never saves.
 
 ## 7. Gotchas
+
+- **Declaration order for port arguments** (issue
+  [#1](https://github.com/stackup-eda/stackup/issues/1)): `place block x vcc=V5.out` fails with
+  "`V5` is not a name in scope" if `place power-jack V5` comes later. Place suppliers before the
+  blocks whose port arguments name them. `circuit` statements are not affected.
+- `stackup check` downloads the pinned library into `.stackup/cache/` beside the manifest: add
+  `.stackup/` to `.gitignore`.
+- `stackup update` rewrites the manifest's pinned commit to the library's head. Don't run it just to
+  fetch the library; `stackup check` does that without changing the pin.
 
 - KDL values can't start with a digit unless they are numbers: write `"2Hz"`, and prefix part names
   that start with a digit (`nfet-2n7002`).

@@ -102,9 +102,22 @@ Stackup library or KiCad symbol definition are all starting points, not evidence
 name across makers (AO3401A, BAT54W, 2N7002) can differ in thresholds, ratings and even pinout, so
 read the datasheet from the maker of the exact MPN being bought.
 
-Download it before designing around the part, and save the PDF under `PCB/datasheets/` with a
-`manifest.json` or README noting the source URL, revision and date, so later reviews use the same
-document. LCSC's `dataManualUrl` is a mirror convenience. Get the document from the manufacturer's
+Download it before designing around the part with
+[../scripts/datasheet.py](../scripts/datasheet.py), which saves the PDF and its text under
+`PCB/datasheets/` and records the source URL, date and hash in `manifest.json`, so later reviews use
+the same document:
+
+```sh
+python3 <skill>/scripts/datasheet.py fetch <manufacturer PDF url> --name AO3400A
+python3 <skill>/scripts/datasheet.py sections AO3400A        # pages for pinout, ratings, package...
+python3 <skill>/scripts/datasheet.py grep AO3400A "Gate Threshold|VGS\(th\)" -C 1
+python3 <skill>/scripts/datasheet.py page AO3400A 1          # render one page, for a drawing
+```
+
+Read tables (thresholds, ratings, pin tables) as text with `grep`; it is far cheaper than looking
+at page images. Render a page only for drawings (pinout, package outline, land pattern), and only
+the page `sections` points to. For a question-level task, grep the rows you need rather than
+fetching every part's datasheet. LCSC's `dataManualUrl` is a mirror convenience. Get the document from the manufacturer's
 site, and say when only a mirror was available.
 
 For each part, confirm from the datasheet (and its errata and relevant app notes):

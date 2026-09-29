@@ -21,31 +21,24 @@ netlist, and returns node voltages, plus helpers for pass/fail checks. It needs 
 python3 <skill>/scripts/ngspice_harness.py --selftest   # RC step: proves the library and harness work
 ```
 
-Copy the harness into the project (`scripts/spice/ngspice_harness.py`) next to the circuit's
-simulation script, so the project reruns without the skill installed. A circuit script looks like:
+**Start from the template instead of writing a simulation from scratch.** Copy these three files
+into the project's `scripts/spice/`, so it reruns without the skill installed:
 
-```python
-from ngspice_harness import NgSpice, time_above, first_above, report
+- [../scripts/spice_template.py](../scripts/spice_template.py): a complete power-latch simulation
+  with insertion, press and shutdown scenarios over supply and threshold corners, plus a flag that
+  removes the fix. Edit only its marked sections: component values, limits (with their datasheet
+  source), the netlist, and the checks.
+- [../scripts/spice_lib.py](../scripts/spice_lib.py): generic models (`nmos`/`pmos` with a threshold
+  argument for datasheet corners, `diode("1N4148"|"BAT54")`, `npn("2N3904")`, a button switch),
+  stimulus (`ramp`, `press`, `pwl`), measurements (`peak`, `first_below`, `time_between`), standard
+  corners (`LIION_1S`, `LIION_1S_USB`, `INSERTION_RISE_TIMES`), and `run_matrix`, which runs a
+  netlist builder over `corners(...)` and turns each result into a pass/fail row.
+- [../scripts/ngspice_harness.py](../scripts/ngspice_harness.py): loads libngspice and runs netlists.
 
-NET = """* buck EN rest state
-Vsys vsys 0 PWL(0 0 {rise} {vsys})
-Rpd en 0 100k
-Cen en 0 20p
-.tran 5u 50m uic
-.end
-"""
-
-def insertion(sim):
-    results = []
-    for vsys, rise in ((3.0, "1m"), (4.2, "100u"), (4.5, "10u")):
-        tr = sim.run(NET.format(vsys=vsys, rise=rise), ["en"])
-        blip_ms = time_above(tr.time, tr["en"], 1.2) * 1e3
-        results.append((f"insert VSYS={vsys}V", blip_ms <= 0.1, f"EN above 1.2V for {blip_ms:.2f} ms"))
-    return results
-
-if __name__ == "__main__":
-    raise SystemExit(report(insertion(NgSpice())))
-```
+The template runs in a few seconds; as shipped it passes, and `--no-gate-cap` makes the insertion
+checks fail, which shows the checks can see the transient. For a circuit that isn't a latch, keep
+the structure (values, limits, `netlist()`, one function per scenario using `run_matrix`) and
+replace the contents.
 
 (BSD `sed -i` on macOS needs `-i ''` if a script edits netlists in place.)
 
