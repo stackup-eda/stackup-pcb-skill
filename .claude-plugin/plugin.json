@@ -1,0 +1,8 @@
+{
+  "name": "pcb-design",
+  "description": "PCB design with Stackup KDL, KiCad layout, DC bias checks, ngspice simulation, and common-part sourcing.",
+  "version": "0.1.0",
+  "author": {
+    "name": "Jessica Janiuk"
+  }
+}

@@ -1,0 +1,62 @@
+{
+  "skill_name": "pcb-design",
+  "evals": [
+    {
+      "id": 1,
+      "prompt": "I need a soft power switch for a board running off a single 18650. A momentary button should turn on a 3.3V buck (TLV62569), and the ESP32-S3 should hold it on and read the button to shut down. Pick the parts and write the Stackup KDL for it.",
+      "expected_output": "DC bias table across 3.0-4.5V with worst-case FET thresholds, a defined rest state for the buck EN pin, button sense kept within the MCU rail, parts with manufacturer/MPN/LCSC and JLCPCB tier, KDL placements and circuits, and a SPICE harness covering insertion, press at low battery, and shutdown.",
+      "files": [],
+      "assertions": [
+        "Shows node voltages for the latch/EN/sense nodes at the low end (3.0 V) and high end (4.2 or 4.5 V) of the supply",
+        "Checks the latch FET against its maximum (worst-case) Vgs(th), not typical",
+        "Gives the buck EN pin a defined rest state (explicit pull-down or equivalent) when the switch is off",
+        "Keeps the button-sense GPIO within the ESP32-S3's 3.3 V rail in every supply state (no pull-up to VSYS/battery)",
+        "Chooses ESP32-S3 GPIOs that avoid strapping, flash/PSRAM and USB pins, or explicitly justifies any exception",
+        "Every placement in the KDL has manufacturer and MPN",
+        "Reports JLCPCB library tier (Basic/Extended) and stock for the chosen parts",
+        "Ran stackup check on the design and it reports 0 errors",
+        "Ran a SPICE simulation covering at least battery insertion and a button press at the lowest supply",
+        "Cites manufacturer datasheets (table/section) for the thresholds used"
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "can you swap the 2N7002 on the latch gate for something with a lower threshold? keep it SOT-23 and cheap at jlc",
+      "expected_output": "Candidates checked by max Vgs(th) against the actual gate drive at the lowest supply, pinout compatibility confirmed from datasheets, JLCPCB tier and stock plus a second source, the KDL placement updated with manufacturer/MPN/LCSC, and a reminder to rerun stackup check, sync the PCB and rerun the latch simulation.",
+      "files": [
+        "evals/files/latch/board.kdl",
+        "evals/files/latch/manifest.kdl"
+      ],
+      "assertions": [
+        "States the replacement FET's maximum Vgs(th) and shows it is below the actual gate drive at the lowest supply with margin",
+        "Computes the gate drive using the real diode drop / divider at the lowest supply (about 3.0 V)",
+        "Checks the off/insertion case: a lower-threshold FET must still stay off (gate below its minimum Vgs(th))",
+        "Confirms the SOT-23 pinout (G/S/D) matches the 2N7002 from the manufacturer datasheet",
+        "Reports JLCPCB tier (prefers Basic) and stock for the chosen part",
+        "Names at least one second source or alternative part",
+        "Updates the placement with manufacturer, MPN and LCSC fields",
+        "Ran stackup check on the edited design and it reports 0 errors",
+        "Tells the user the follow-up steps: sync the PCB and re-run the latch simulation"
+      ]
+    },
+    {
+      "id": 3,
+      "prompt": "We're about to send this board to the fab for assembly. What do I need to check and export first?",
+      "expected_output": "A pre-order checklist: stackup check --locked, PCB in sync with Stackup, DRC clean with documented exceptions, unambiguous BOM (LCSC numbers for JLCPCB or stackup bom CSV with MPN columns), footprints vs package drawings, polarity/rotation review, production files regenerated, and the bench checklist.",
+      "files": [],
+      "assertions": [
+        "Includes running stackup check (ideally --locked)",
+        "Includes confirming the KiCad PCB is in sync with the Stackup design",
+        "Includes DRC with zero errors and documented exceptions",
+        "Requires every BOM line to have MPN, manufacturer, value, package and description",
+        "Notes that stackup bom has no package/description columns, or otherwise explains how package/description reach the fab",
+        "Covers LCSC numbers for JLCPCB assembly or MPN columns for other assemblers",
+        "Includes checking footprint geometry against manufacturer package drawings",
+        "Includes reviewing polarity/rotation in the assembler's placement preview",
+        "Includes re-checking stock at order time",
+        "Lists the production exports (gerbers, drill, BOM, placement/CPL)",
+        "Includes a first-board bring-up or bench checklist"
+      ]
+    }
+  ]
+}
