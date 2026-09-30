@@ -6,9 +6,13 @@ Reading a datasheet page as an image costs far more than reading its text. Use t
 land pattern).
 
     datasheet.py fetch <url> --name AO3400A [--dir PCB/datasheets]   # PDF + text + manifest entry
-    datasheet.py sections AO3400A                   # which pages hold pinout, ratings, package...
+    datasheet.py fetch AO3400A=<url> AO3401A=<url> TLV62569=<url>   # several in one call
+    datasheet.py sections AO3400A,AO3401A           # which pages hold pinout, ratings, package...
     datasheet.py grep AO3400A "V.?GS\\(th\\)|Gate Threshold" [-C 1]  # matching lines, with page numbers
+    datasheet.py grep all "Absolute Maximum" -C 3   # every datasheet in the folder
     datasheet.py page AO3400A 1 [--dpi 90]          # render one page to PNG for a drawing
+
+NAME may be one name, a comma-separated list, or "all" for every datasheet in the folder.
 
 Files live in --dir (default PCB/datasheets): <name>.pdf, <name>.txt (pages split by form feeds),
 and manifest.json with the source URL, date and SHA-256, so a later review reads the same revision.
@@ -137,14 +141,60 @@ def load_pages(name, directory):
         return pages_of(f.read())
 
 
+def resolve_names(spec, directory):
+    """Names from 'A', 'A,B' or 'all' (every datasheet with a .txt or .pdf in the folder)."""
+    if spec == "all":
+        names = sorted({os.path.splitext(f)[0] for f in os.listdir(directory)
+                        if f.endswith((".txt", ".pdf")) and not f.startswith(".")})
+        if not names:
+            raise FileNotFoundError(f"no datasheets in {directory}")
+        return names
+    return [n.strip() for n in spec.split(",") if n.strip()]
+
+
+def readable_pages(name, directory):
+    """load_pages, but a datasheet that can't be read is reported and skipped (None)."""
+    try:
+        return load_pages(name, directory)
+    except (OSError, RuntimeError, subprocess.CalledProcessError) as e:
+        print(f"{name}: skipped: {str(e).splitlines()[0]}", file=sys.stderr)
+        return None
+
+
+def fetch_targets(items, name=None):
+    """[(name, url)] from `fetch <url> --name N` or `fetch N=URL N=URL ...`."""
+    if name:
+        if len(items) != 1:
+            raise ValueError("--name takes exactly one URL; use NAME=URL pairs for several")
+        return [(name, items[0])]
+    targets = []
+    for item in items:
+        n, sep, url = item.partition("=")
+        if not sep or not n or not url.startswith(("http://", "https://")):
+            raise ValueError(f"expected NAME=URL, got {item!r}")
+        targets.append((n, url))
+    return targets
+
+
+def fetch_one(name, url, directory):
+    pdf, txt, manifest = paths(name, directory)
+    download(url, pdf)
+    extract_text(pdf, txt)
+    entry = update_manifest(manifest, name, url, pdf)
+    pages = load_pages(name, directory)
+    lines = [f"saved {pdf} ({len(pages)} pages), {txt}; sha256 {entry['sha256'][:12]}"]
+    lines += [f"  {label}: pages {', '.join(map(str, hits))}" for label, hits in find_sections(pages).items()]
+    return lines
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dir", default=DEFAULT_DIR, help=f"datasheet folder (default {DEFAULT_DIR})")
     sub = parser.add_subparsers(dest="command", required=True)
     f = sub.add_parser("fetch", help="download a PDF, extract its text, record it in the manifest")
-    f.add_argument("url")
-    f.add_argument("--name", required=True, help="short file name, e.g. the MPN")
+    f.add_argument("items", nargs="+", metavar="URL | NAME=URL")
+    f.add_argument("--name", help="short file name for a single URL, e.g. the MPN")
     s = sub.add_parser("sections", help="list the pages holding the usual datasheet sections")
     s.add_argument("name")
     g = sub.add_parser("grep", help="print matching lines with page numbers")
@@ -160,26 +210,35 @@ def main(argv=None):
     try:
         if args.command == "fetch":
             os.makedirs(args.dir, exist_ok=True)
-            pdf, txt, manifest = paths(args.name, args.dir)
-            download(args.url, pdf)
-            extract_text(pdf, txt)
-            entry = update_manifest(manifest, args.name, args.url, pdf)
-            with open(txt, errors="replace") as fh:
-                count = len(pages_of(fh.read()))
-            print(f"saved {pdf} ({count} pages), {txt}; sha256 {entry['sha256'][:12]}")
-            for label, hits in find_sections(load_pages(args.name, args.dir)).items():
-                print(f"  {label}: pages {', '.join(map(str, hits))}")
+            failed = []
+            for name, url in fetch_targets(args.items, args.name):
+                try:
+                    print("\n".join(fetch_one(name, url, args.dir)))
+                except (OSError, RuntimeError, ValueError, subprocess.CalledProcessError) as e:
+                    print(f"{name}: failed: {e}", file=sys.stderr)
+                    failed.append(name)
+            return 1 if failed else 0
         elif args.command == "sections":
-            pages = load_pages(args.name, args.dir)
-            print(f"{args.name}: {len(pages)} pages")
-            for label, hits in find_sections(pages).items():
-                print(f"  {label}: pages {', '.join(map(str, hits))}")
+            for name in resolve_names(args.name, args.dir):
+                pages = readable_pages(name, args.dir)
+                if pages is None:
+                    continue
+                print(f"{name}: {len(pages)} pages")
+                for label, hits in find_sections(pages).items():
+                    print(f"  {label}: pages {', '.join(map(str, hits))}")
         elif args.command == "grep":
-            hits = grep(load_pages(args.name, args.dir), args.pattern, args.context)
-            for page, line, lines in hits:
-                print(f"--- page {page}, line {line}")
-                print("\n".join(lines))
-            if not hits:
+            names = resolve_names(args.name, args.dir)
+            found = 0
+            for name in names:
+                pages = readable_pages(name, args.dir)
+                if pages is None:
+                    continue
+                for page, line, lines in grep(pages, args.pattern, args.context):
+                    label = f"{name} " if len(names) > 1 else ""
+                    print(f"--- {label}page {page}, line {line}")
+                    print("\n".join(lines))
+                    found += 1
+            if not found:
                 print("no matches")
                 return 1
         elif args.command == "page":

@@ -27,8 +27,15 @@ level's work. Verification depth stays; what scales is how much gets built aroun
 | **New circuit** | a power latch, a charger, a sensor block | The full workflow below for that circuit, including a simulation built from `scripts/spice_template.py` | CI setup, READMEs, repo layout, unless asked |
 | **Board to fab** | "we're ordering" | The pre-order checks in `references/kicad.md` and `references/bom-and-fab.md`, and the repo conventions at the end | |
 
-When something below the current level is missing (no CI check, no datasheet folder, no bench
-checklist), mention it in one line instead of building it.
+Below the fab level, **the reply is the deliverable**. Put the design notes, DC table, GPIO table,
+decisions and bench checklist in the reply, not in new README or notes files. Write files only for
+the design itself (KDL), the simulation and its results, and data a check needs (datasheets you
+fetched, the BOM export). When something below the current level is missing (no CI check, no
+datasheet folder, no bench checklist file), mention it in one line instead of building it.
+
+Look things up in batches: `jlc_parts.py A B C --exact --best` checks every part in one call, and
+`datasheet.py fetch A=<url> B=<url>` / `grep all <pattern>` fetch and search several datasheets at
+once.
 
 ## Toolchain
 
@@ -46,8 +53,8 @@ Bundled scripts (use them instead of writing your own):
 | Script | Use it to |
 |---|---|
 | `stackup_index.py [filter]` | list the library's parts and blocks, with packages, MPNs, features and parameters |
-| `datasheet.py fetch/sections/grep/page` | download a datasheet once, read tables as text, render only drawing pages |
-| `jlc_parts.py <MPN>` | find the LCSC number, JLCPCB tier and stock |
+| `datasheet.py fetch/sections/grep/page` | download datasheets once (several per call), read tables as text across all of them, render only drawing pages |
+| `jlc_parts.py <MPN> [<MPN>…] --best` | LCSC number, JLCPCB tier and stock for one or many parts |
 | `spice_template.py` + `spice_lib.py` + `ngspice_harness.py` | simulate a circuit: copy the template, edit values, netlist, limits and checks |
 | `bom_check.py` | check a `stackup bom` export for blank or ambiguous lines |
 | `footprint_geometry.py` | measure a footprint to compare against the package drawing |

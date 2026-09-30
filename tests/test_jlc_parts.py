@@ -1,5 +1,6 @@
 import contextlib
 import io
+import json
 import os
 import sys
 import unittest
@@ -89,9 +90,65 @@ class MainTests(unittest.TestCase):
         search.assert_called_once_with("AO3401A", page_size=100)
 
     def test_lookup_failure_returns_1(self):
+        out = io.StringIO()
         with mock.patch.object(j, "search", side_effect=RuntimeError("down")), \
-                contextlib.redirect_stderr(io.StringIO()):
+                contextlib.redirect_stderr(io.StringIO()), contextlib.redirect_stdout(out):
             self.assertEqual(j.main(["X"]), 1)
+        self.assertIn("lookup failed: down", out.getvalue())
+
+
+class BatchTests(unittest.TestCase):
+    FOUND = {
+        "AO3400A": [listing("C20917", "AO3400A", "AOS", library="base", stock=9),
+                    listing("C2", "AO3400A", "UMW", stock=5)],
+        "NOPE": [],
+    }
+
+    def fake_search(self, query, page_size=50):
+        if query == "BROKEN":
+            raise RuntimeError("JLC search returned code 500")
+        return self.FOUND.get(query, [])
+
+    def test_lookup_all_keeps_order_and_errors(self):
+        results = j.lookup_all(["AO3400A", "NOPE", "BROKEN"], exact=True, delay=0,
+                               search_fn=self.fake_search)
+        self.assertEqual([q for q, _, _ in results], ["AO3400A", "NOPE", "BROKEN"])
+        self.assertEqual(results[0][1][0]["lcsc"], "C20917")
+        self.assertEqual(results[1][1], [])
+        self.assertIn("500", results[2][2])
+
+    def test_format_best(self):
+        text = j.format_best(j.lookup_all(["AO3400A", "NOPE", "BROKEN"], delay=0,
+                                          search_fn=self.fake_search))
+        lines = text.splitlines()
+        self.assertIn("C20917", lines[1])
+        self.assertIn("(+1 more)", lines[1])
+        self.assertIn("no matching listings", lines[2])
+        self.assertIn("lookup failed", lines[3])
+
+    def test_main_multiple_best_and_json(self):
+        with mock.patch.object(j, "search", side_effect=self.fake_search):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = j.main(["AO3400A", "NOPE", "--best", "--delay", "0"])
+            self.assertEqual(code, 0)
+            self.assertIn("C20917", out.getvalue())
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                code = j.main(["AO3400A", "BROKEN", "--json", "--delay", "0"])
+            self.assertEqual(code, 1)
+            data = json.loads(out.getvalue())
+            self.assertEqual(data["AO3400A"][0]["lcsc"], "C20917")
+            self.assertIn("error", data["BROKEN"])
+
+    def test_main_multiple_sections(self):
+        with mock.patch.object(j, "search", side_effect=self.fake_search):
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(io.StringIO()):
+                code = j.main(["AO3400A", "BROKEN", "--delay", "0"])
+        self.assertEqual(code, 1)
+        self.assertIn("== AO3400A", out.getvalue())
+        self.assertIn("lookup failed", out.getvalue())
 
 
 if __name__ == "__main__":

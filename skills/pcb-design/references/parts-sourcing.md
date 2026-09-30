@@ -48,6 +48,7 @@ For each non-generic part (anything but a jellybean resistor or capacitor), reco
   python3 <skill>/scripts/jlc_parts.py AO3401A              # all listings, best tier first
   python3 <skill>/scripts/jlc_parts.py AO3401A --exact      # only exact MPN matches
   python3 <skill>/scripts/jlc_parts.py "100nF 0402" --basic # Basic-library alternatives
+  python3 <skill>/scripts/jlc_parts.py AO3400A AO3401A TLV62569DBVR --exact --best  # a whole BOM, one line each
   ```
 
   It uses the same unauthenticated search the jlcpcb.com parts page uses. Know its traps:
@@ -109,7 +110,9 @@ the same document:
 
 ```sh
 python3 <skill>/scripts/datasheet.py fetch <manufacturer PDF url> --name AO3400A
+python3 <skill>/scripts/datasheet.py fetch AO3401A=<url> TLV62569=<url>   # several at once
 python3 <skill>/scripts/datasheet.py sections AO3400A        # pages for pinout, ratings, package...
+python3 <skill>/scripts/datasheet.py grep all "Absolute Maximum" -C 4    # across every datasheet
 python3 <skill>/scripts/datasheet.py grep AO3400A "Gate Threshold|VGS\(th\)" -C 1
 python3 <skill>/scripts/datasheet.py page AO3400A 1          # render one page, for a drawing
 ```
