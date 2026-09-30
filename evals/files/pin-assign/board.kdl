@@ -21,10 +21,10 @@ design controller {
     place push-button SW2
     place push-button SW3
 
-    circuit V3.out.rail R_LED D1 V3.out.gnd name="LED_K"   // TODO: drive the LED from an MCU pin
+    // TODO: drive the status LED (D1 through R_LED) from an MCU pin
     circuit SW1.b V3.out.gnd
     circuit SW2.b V3.out.gnd
     circuit SW3.b V3.out.gnd
     // TODO: XBee SPI (SCK, MOSI, MISO, SSEL), SPI_ATTN, ON_SLEEP and DTR (sleep request) to the MCU
-    // TODO: SW1-SW3 (active low) to MCU inputs
+    // TODO: SW1-SW3 to MCU inputs (active low: pressed pulls the input to GND; no pull-ups placed yet)
 }

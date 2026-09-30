@@ -30,7 +30,16 @@ files it needs, a description of a good result, and pass/fail assertions for gra
   (SOT-323) on a 2-pad SOD-123 footprint. Q1 and R1 are correct.
 - **bom-export:** `bom_check.py` finds R1's missing LCSC, C1's missing part and Q1's comma. It
   can't see that D1's library-default MPN (BAT54W-7-F, SOT-323) disagrees with its SOD-123
-  footprint, or that J1's value doesn't say right-angle.
+  footprint, or that J1's value doesn't say right-angle. The circuit itself is meant to be sound:
+  R1 pulls the buck's EN up to VBAT (always on), and VBAT_SENSE goes to a divider on another sheet.
+
+Each case also has depth checks that a found-the-bug check can't separate: datasheet numbers taken
+from documents the run actually opened, side effects of the fixes, XBee3 SPI-mode enabling, the
+reverse-mount LED's mirrored pad numbering, tier and stock, and not rejecting a correct alternative
+fix without evidence (the pull-up to 3V3 in analyzer-claims is safe with R_INV_BASE1 at 100 kΩ).
+
+Fixture fixes after the first run of these cases (2026-09-29): the pin-assign LED circuit no longer
+names the 3V3 rail, and bom-export's buck EN is pulled up instead of held off by an MCU it powers.
 
 The fixtures are checked by `tests/test_eval_fixtures.py`, so a library or CLI change that moves
 a planted bug fails a test instead of silently changing an eval.
