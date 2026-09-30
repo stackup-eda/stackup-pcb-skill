@@ -106,7 +106,9 @@ def stackup_bom(design, binary=None):
     binary = binary or os.environ.get("STACKUP_BIN", "stackup")
     result = subprocess.run([binary, "bom", design, "--locked"], capture_output=True, text=True,
                             check=False, cwd=os.path.dirname(os.path.abspath(design)) or ".")
-    if result.returncode:
+    # `stackup bom` exits 1 when a part has no MPN but still writes the CSV; check_rows reports
+    # those parts too, so only a run that produced no CSV is a failure.
+    if result.returncode and not result.stdout.startswith("Refs,"):
         raise RuntimeError(f"stackup bom failed:\n{result.stderr or result.stdout}")
     return result.stdout
 

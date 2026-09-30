@@ -32,60 +32,79 @@ names exactly one body, and a description on every part.
 
 ## In Stackup
 
-Every placement that gets bought carries its purchasing identity:
+This assumes Stackup at the commit pinned in [stackup.md](stackup.md) (`1acb9ba` or later), which
+has MPN declarations and placement matching. 0.1.3 from crates.io has neither.
+
+**Declare each orderable part once, then select it.** An `mpn` declaration is the whole purchasing
+choice: manufacturer, what it is, its footprint, its rating and its supplier numbers. `match
+placement` selects it for every placement it fits, including the parts that library blocks place
+inside themselves (a buck block's inductor and capacitors):
 
 ```kdl
-place bat54w "D1" footprint="Package_TO_SOT_SMD:SOT-323_SC-70" \
-    manufacturer="Diodes Incorporated" mpn="BAT54W-7-F" lcsc="C134417" value="BAT54W-7-F"
+mpn "CL05B104KO5NNNC" manufacturer="Samsung Electro-Mechanics" kind=capacitor value="100nF" \
+    footprint="Capacitor_SMD:C_0402_1005Metric" rated_voltage="16V" {
+    catalog lcsc="C1525"
+}
+
+design board {
+    place tlv62569-buck buck in=VIN.out
+    match placement {
+        when kind=capacitor
+        when package.size="0402"
+        when value="100nF"
+        set mpn="CL05B104KO5NNNC"
+    }
+}
 ```
 
-- `value=` is human-readable (`100kΩ`, `10µF`, the part name), unless the fab path below needs
-  the long form.
-- `manufacturer=`, `mpn=`, `lcsc=` (and other distributor fields) state the exact purchase. Library
-  parts can supply defaults, but review what the BOM actually contains.
+- A rule can test `kind`, `part`, `value`, `footprint`, `package.size`, `intent`, `path` and
+  `required_voltage` (`when … min=`/`max=` for ranges). Two rules choosing different MPNs for one
+  placement is an error, and a board rule beats an MPN stated on the part or placement.
+- `stackup check` validates each selection: `kind`, `value` and `footprint` must agree, and
+  `rated_voltage` must cover a placement's `required_voltage`.
+- Literal `manufacturer=`/`mpn=`/`lcsc=` on a placement still work for one-off parts:
+
+  ```kdl
+  place bat54w "D1" footprint="Package_TO_SOT_SMD:SOT-323_SC-70" \
+      manufacturer="Diodes Incorporated" mpn="BAT54W-7-F" lcsc="C134417" value="BAT54W-7-F"
+  ```
+
+- `value=` is the part's electrical value. Library blocks calculate with it (a pull-down adds
+  `1 / value` to the net), so keep it a quantity (`100kΩ`) on anything a block computes with.
+- `voltage=`, `tolerance=`, `dielectric=` and `dissipation=` record a placement's rating on the
+  exported footprint; a selected MPN supplies its own `rated_voltage`.
 - `hand=#true` keeps a hand-installed part in the purchasing BOM and marks it DNP for the assembler.
-- A part with no MPN is handled as described above.
 - Description lives on the part (`description "…"` in the library or `parts.kdl`, or per package
   when a body changes it). Board-specific details go in `note=` on the placement.
 
-Export the purchasing BOM with separate columns:
+Export the purchasing BOM:
 
 ```sh
 stackup bom PCB/stackup/board.kdl --locked -o <board>-bom.csv
 ```
 
-As of Stackup 0.1.3 the CSV columns are `Refs, Quantity, Value, Footprint, MF, MPN, LCSC, Mouser,
-DigiKey, Hand, DNP`. There is **no Package or Description column**, and part descriptions and
-placement notes are not exported. Until the pinned version adds them, a BOM built only from that CSV
-is missing information. Check the header of the version in use, then get package, description and
-details into what the fab receives one of two ways:
-
-- carry them in the value, as below (`<label> | <MPN> | <manufacturer> | <package> | <details>`), or
-- post-process the CSV with a project script that adds Package and Description columns from the
-  design, and check in CI that no row is blank.
+The columns are `Refs, Quantity, Value, Footprint, MF, MPN, LCSC, Mouser, DigiKey, Hand, DNP`.
+Every line must name an MPN: `stackup bom` reports an error for each part without one and exits 1,
+but still writes the CSV. There is no Package or Description column, so the package and details a
+fab needs go in `bom_value=` (below) when the fab reads only the Value column.
 
 ## What each fab sees
 
-- **JLCPCB assembly** matches on the **LCSC part number**, so every assembled part needs `lcsc=`.
-  The KiCad Fabrication Toolkit plugin writes JLCPCB's BOM (Comment = Value, Designator, Footprint,
-  LCSC) from the PCB.
-- **Fabs that read only Designator, Footprint, Quantity and Value** (many do) never see
-  MF, MPN or LCSC columns from a KiCad export. Give them a Value that is unambiguous on its own:
-  `<label> | <MPN> | <manufacturer> | <package>`, with the label dropped when it repeats the MPN,
-  the human value (`100kΩ`, `10µF`) as the label for passives, and no commas, semicolons or quotes.
-- **Build that long form at export, not in the design.** Stackup requires `value=` on resistors and
-  capacitors to be a plain quantity (`"100nF"`), so a long-form value there fails `stackup check`.
-  Keep `value=` readable in the KDL and let `bom_export.py` write the long form into the fab's file:
+- **JLCPCB assembly** matches on the **LCSC part number**, so every assembled part needs one
+  (from its MPN declaration's `catalog lcsc=`, or `lcsc=` on the placement). The KiCad Fabrication
+  Toolkit plugin writes JLCPCB's BOM (Comment = Value, Designator, Footprint, LCSC) from the PCB.
+- **Fabs that read only Designator, Footprint, Quantity and Value** (many do) never see the MF,
+  MPN or LCSC columns. Give them a Value that is unambiguous on its own with **`bom_value=`**:
 
-  ```sh
-  python3 <skill>/scripts/bom_export.py --stackup PCB/stackup/board.kdl \
-      --jlc fab/<board>-jlc-bom.csv --value-only fab/<board>-bom.csv --purchasing fab/<board>-purchasing.csv
+  ```kdl
+  place resistor R1 value="100kΩ" bom_value="100kΩ | 0402WGF1003TCE | UNI-ROYAL | 0402"
   ```
 
-  It runs `bom_check.py` first and stops on any gap. It takes the package from the footprint
-  (a standard code such as 0402 or SOT-23, else the footprint's own name), with
-  `--package REF=TEXT` for parts whose footprint doesn't say. The JLCPCB file leaves out
-  hand-installed and DNP parts; the Value-only file marks them DNP.
+  `bom_value=` replaces the Value column in `stackup bom` and the Value field in the KiCad export
+  (which the fab tools read), while `value=` stays the quantity blocks calculate with. Use the form
+  `<label> | <MPN> | <manufacturer> | <package> | <details>`: drop the label when it repeats the
+  MPN, keep the human value (`100kΩ`, `10µF`) as the label for passives, and keep commas,
+  semicolons and quotes out so the CSV never needs quoting.
 - Either way, add anything a fab could get wrong: connector orientation (right-angle vs vertical),
   variant, polarity.
 

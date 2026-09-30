@@ -57,7 +57,6 @@ Bundled scripts (use them instead of writing your own):
 | `jlc_parts.py <MPN> [<MPN>…] --best` | LCSC number, JLCPCB tier and stock for one or many parts |
 | `spice_template.py` + `spice_lib.py` + `ngspice_harness.py` | simulate a circuit: copy the template, edit values, netlist, limits and checks |
 | `bom_check.py` | check a `stackup bom` export for blank or ambiguous lines |
-| `bom_export.py` | write the fab's BOM (JLCPCB format, Value-only, or purchasing) with `value \| MPN \| manufacturer \| package` on every line |
 | `footprint_geometry.py` | measure a footprint to compare against the package drawing |
 | `check_pcb_sync.py` | CI check that the KiCad PCB matches the Stackup design |
 
