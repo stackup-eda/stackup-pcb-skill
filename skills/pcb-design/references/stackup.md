@@ -37,7 +37,7 @@ ci/stackup/                  # Cargo-locked CLI so everyone runs the same versio
 `manifest.kdl` pins the library to a **full commit hash** (not a branch or tag):
 
 ```kdl
-stackup "0.1"
+stackup "0.2"
 library stackup git="https://github.com/stackup-eda/library" rev="<full commit sha>"
 ```
 
@@ -47,12 +47,12 @@ To work against a local library checkout, add a `manifest.local.kdl` beside it (
 library stackup path="../stackup-library"
 ```
 
-`--locked` ignores that local override; CI always uses `--locked`.
+`--locked` ignores that local override; CI always uses `--locked`. `stackup "0.2"` is the oldest
+CLI that can read the design: a CLI older than that refuses the manifest instead of misreading it.
 
-Pin the CLI with a tiny Cargo project so the version is locked. The skill currently targets
-Stackup at commit `1acb9ba` on `main`, which adds MPN declarations with placement matching and
-fixes `place` declaration order; the latest crates.io release (0.1.3) has neither. Move the pin to a
-release once one includes them:
+Pin the CLI with a tiny Cargo project so the version is locked. The skill targets Stackup
+**0.2.0** (crates.io), which adds MPN declarations with placement matching, the purchasing BOM,
+order-free `place` port arguments and child-designator parameters; 0.1.x has none of them:
 
 ```toml
 # ci/stackup/Cargo.toml
@@ -63,7 +63,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-stackup = { package = "stackup-eda", git = "https://github.com/stackup-eda/stackup", rev = "1acb9ba" }
+stackup = { package = "stackup-eda", version = "=0.2.0" }
 ```
 
 ```rust
@@ -74,10 +74,10 @@ fn main() {
 ```
 
 Run it with `cargo run --locked --manifest-path ci/stackup/Cargo.toml -- check PCB/stackup/board.kdl --locked`.
-For daily use, install the same commit so `stackup` on `PATH` matches the pin:
+For daily use, install the same version so `stackup` on `PATH` matches the pin:
 
 ```sh
-cargo install --git https://github.com/stackup-eda/stackup --rev 1acb9ba stackup-eda --locked
+cargo install stackup-eda --version 0.2.0 --locked
 ```
 
 ## 2. CLI
@@ -131,8 +131,7 @@ design example {
 Key ideas (SPEC sections in brackets):
 
 - **Order carries no meaning.** A statement, including a port argument on `place`
-  (`vcc=V5.out`), may name a placement declared later. (Before `b98481c`, port arguments couldn't;
-  see stackup-eda/stackup#1.)
+  (`vcc=V5.out`), may name a placement declared later (0.2.0 and later).
 - **Facts stay on their net.** A voltage stated on the battery net doesn't pass through a switch or
   series part, so `set … net.voltage` goes on the net whose requirement should read it.
 - **Shunt blocks** (`pull-up`, `pull-down`, `decouple`) connect through `.node` and their return
@@ -141,6 +140,20 @@ Key ideas (SPEC sections in brackets):
   `intent=` (`decouple`, `bypass`, `bulk`, `filter`, `pull-up`, `pull-down`, `timing`, `series`,
   `divider`) and `note=`. `package=` selects a non-default package. `hand=#true` marks a
   hand-installed part (stays in the BOM, marked DNP for the assembler).
+- **Designators** are numbered automatically from each part's `reference` prefix, in placement
+  order; `designator="R17"` on a placement fixes one. A reusable block lets the board name its
+  children through an optional text parameter (SPEC §6.2):
+
+  ```kdl
+  block sense {
+      param ref-R text default=#null      // null keeps automatic numbering
+      place resistor R designator=ref-R
+  }
+  design board { place sense current ref-R="R17" }
+  ```
+
+  Nested blocks forward the parameter explicitly. Automatic numbering skips every explicitly
+  assigned name, and two placements given the same name is an error.
 - **References:** `/` is hierarchy (`timer/u`), `.` is a pin or port (`u.OUT`), `@` is a pad
   (`mcu.VDD@A1`). Names with `/` must be quoted.
 - **`circuit a b c`** joins terminals; a series element (a resistor, a diode) is entered at `a` and
@@ -223,7 +236,7 @@ gate or that a transient lifts a latch.
 
 - KDL values can't start with a digit unless they are numbers: write `"2Hz"`, and prefix part names
   that start with a digit (`nfet-2n7002`).
-- The public GitHub `main` and the crates.io release can differ; trust `stackup --help` and the
-  SPEC at the pinned version.
+- The public GitHub `main` can be ahead of the pinned release; trust `stackup` (no arguments) and
+  the SPEC at the pinned tag (`v0.2.0`).
 - Commit `board.kdl`, `parts.kdl`, `manifest.kdl`, the Cargo lock, and the synced `.kicad_pcb`
   together, so the PCB never drifts from the design.

@@ -32,8 +32,8 @@ names exactly one body, and a description on every part.
 
 ## In Stackup
 
-This assumes Stackup at the commit pinned in [stackup.md](stackup.md) (`1acb9ba` or later), which
-has MPN declarations and placement matching. 0.1.3 from crates.io has neither.
+This assumes Stackup 0.2.0 or later (the version pinned in [stackup.md](stackup.md)), which has
+MPN declarations, placement matching and `stackup bom`. 0.1.x has none of them.
 
 **Declare each orderable part once, then select it.** An `mpn` declaration is the whole purchasing
 choice: manufacturer, what it is, its footprint, its rating and its supplier numbers. `match
