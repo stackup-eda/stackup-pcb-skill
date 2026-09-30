@@ -70,30 +70,43 @@ see it. So every run gets its own clean session and its own directory outside th
   customizations off, and don't use subagents from a working session (they inherit its context):
 
   ```sh
-  cd <case dir> && claude -p "$(cat <prompt file>)" --safe-mode --model <model> \
+  cd <case dir> && TMPDIR=<case dir>/scratch claude -p --safe-mode --model <model> \
     --no-session-persistence --strict-mcp-config --disable-slash-commands \
     --allowedTools "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch" \
     --disallowedTools "Agent" --settings <deny-rules.json> \
-    --output-format stream-json --verbose > <logs>/<config>-case-NN.jsonl
+    --output-format stream-json --verbose < <prompt file> > <logs>/<config>-case-NN.jsonl
   ```
 
-  `--safe-mode` turns off CLAUDE.md, memory, skills, plugins, hooks and MCP servers. Disallow the
-  Agent tool so the whole run stays in one transcript. Other harnesses need the equivalent: no
-  user instructions, memory, skills or plugins. Before the first real run, start one session with
-  the same flags and ask it to list its skills, plugins, MCP tools and any instructions or memory
-  in its context; all should be empty.
+  `--safe-mode` turns off CLAUDE.md, memory, skills, plugins, hooks and MCP servers (an AGENTS.md or
+  CLAUDE.md in the case folder or a parent is not loaded either). Disallow the Agent tool so the
+  whole run stays in one transcript. Pass the prompt on stdin, not as an argument: an argument is
+  visible to every other process through `ps`. Set `TMPDIR` to the case's scratch folder, since
+  scripts such as `ngspice_harness.py` otherwise write to the shared system temp directory. Other
+  harnesses need the equivalent: no user instructions, memory, skills or plugins. Before the first
+  real run, start one session with the same flags and ask it to list its skills, plugins, MCP tools
+  and any instructions or memory in its context; all should be empty.
+- **Baselines first, then the skill, never both at once.** Run every baseline case to completion
+  before creating the with-skill root. Then no baseline can see the skill snapshot, a with-skill
+  run's command line or its temp files, whatever the deny rules miss. Runs within one
+  configuration can go in parallel.
 - **Neutral directories outside the repo.** Use two roots whose paths say nothing about skills or
   evaluations (e.g. `~/work-a/` for the baseline and `~/work-b/` for with-skill), one folder per
-  case inside each. Copy the fixture files into each case's `design/` before the run, so the
-  prompt never names a path in this repo. Put a snapshot of `skills/pcb-design/` (without
-  `__pycache__`) only in the with-skill root. Nothing else from the repo goes in either root,
-  above all not this README. Keep prompts, settings and transcripts in a third directory.
+  case inside each, with new names for every iteration. Copy the fixture files into each case's
+  `design/` before the run, so the prompt never names a path in this repo. Put a snapshot of
+  `skills/pcb-design/` (without `__pycache__`) only in the with-skill root. Nothing else from the
+  repo goes in either root, above all not this README. Keep prompts, settings and transcripts in a
+  third directory. After the results are copied into the workspace, delete the roots, the logs
+  directory and the agent's per-directory session folders (for Claude Code, `~/.claude/projects/`
+  entries named after the case paths), so nothing from one iteration survives into the next.
 - **Deny rules** (the `--settings` file), for both the Read tool and Bash: this repo, the user's
-  agent config directory (`~/.claude`), the other configuration's root and the logs directory.
-  Under `--safe-mode` these still apply. Write Bash patterns against specific paths, not common
-  words: a `Bash(*repos*)` rule also blocked a run's call to GitHub's `api.github.com/repos/...`.
-  Bash deny rules match the command text, so they are a guard, not a sandbox; the audit below is
-  what proves isolation.
+  agent config directory (`~/.claude`), the other configuration's root and the logs directory. Under
+  `--safe-mode` these still apply. Write Bash patterns against specific paths, not common words: a
+  `Bash(*repos*)` rule also blocked a run's call to GitHub's `api.github.com/repos/...`. Add a Bash
+  rule on this repo's GitHub owner and name, so `curl` can't fetch it. Bash deny rules match the
+  command text, so they are a guard, not a sandbox; the audit below is what proves isolation.
+- **This repo is public.** A baseline's web search for Stackup or KDL help could find `SKILL.md`
+  or this README's answer key. A WebFetch rule can only block a whole domain, and the Stackup
+  library itself is fetched from GitHub, so no rule covers it; the audit has to.
 - **Same model and settings for both configurations**, and a newer CLI if the one on the path
   doesn't support the model.
 
@@ -118,16 +131,24 @@ Rules:
 
 ### Audit, then grade
 
-Before grading, check every transcript. For each tool call, look for any path outside the run's
-own case folder (and the skill snapshot, for with-skill runs), any listing of the home directory
-or the other root, and any permission denial. For each baseline tool result, look for the skill's
-name, this repo's name, `SKILL.md`, `evals.json` or the other root. A run that saw any of these is
-contaminated; rerun it. Tool paths inside the agent's own session folder (large outputs it saved
-for itself) are expected.
+Before grading, check every transcript:
+
+- **The session's first record** (`"subtype": "init"`): empty `skills` and `mcp_servers`, and
+  only the harness's built-in plugins. Check this for every run, not just the first probe.
+- **Every tool call:** any path outside the run's own case folder (and the skill snapshot, for
+  with-skill runs), any listing of the home directory or the other root, any process listing, and
+  any permission denial.
+- **Every web search and fetch, and its result:** any hit on this repo's GitHub URL.
+- **Every baseline tool result:** the skill's name, this repo's name, `SKILL.md`, `evals.json` or
+  the other root.
+
+A run that saw any of these is contaminated; rerun it. Tool paths inside the agent's own session
+folder (large outputs it saved for itself) are expected.
 
 Grade each run against the case's `assertions`, re-running `stackup check` and `bom_check.py` on
 any design a run produced rather than trusting its report. Grade tool-call counts (case 9) and
 lookup batching (case 10) from the run's transcript; the outputs folder doesn't show them. Copy
-each run's outputs, prompt and transcript into the gitignored `pcb-design-workspace/iteration-N/`,
+each run's outputs, prompt and transcript into the next unused `iteration-N/` in the gitignored
+`pcb-design-workspace/` (list the folder first and never write into an existing iteration),
 with a `grading.json` (each assertion, pass or fail, and the evidence) beside them and the score
 table in `benchmark.md`.
