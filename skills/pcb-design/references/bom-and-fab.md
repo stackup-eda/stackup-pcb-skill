@@ -70,11 +70,22 @@ details into what the fab receives one of two ways:
   The KiCad Fabrication Toolkit plugin writes JLCPCB's BOM (Comment = Value, Designator, Footprint,
   LCSC) from the PCB.
 - **Fabs that read only Designator, Footprint, Quantity and Value** (many do) never see
-  MF, MPN or LCSC columns from a KiCad export. Send them the `stackup bom` CSV, which has manufacturer
-  and MPN columns. If their BOM must come from the KiCad Value field instead, make that field
-  unambiguous: `<label> | <MPN> | <manufacturer> | <package> | <details>`, with the label dropped when it repeats
-  the MPN, the human value (`100kΩ`, `10µF`) as the label for passives, and no commas, semicolons or
-  quotes so the CSV never needs quoting.
+  MF, MPN or LCSC columns from a KiCad export. Give them a Value that is unambiguous on its own:
+  `<label> | <MPN> | <manufacturer> | <package>`, with the label dropped when it repeats the MPN,
+  the human value (`100kΩ`, `10µF`) as the label for passives, and no commas, semicolons or quotes.
+- **Build that long form at export, not in the design.** Stackup requires `value=` on resistors and
+  capacitors to be a plain quantity (`"100nF"`), so a long-form value there fails `stackup check`.
+  Keep `value=` readable in the KDL and let `bom_export.py` write the long form into the fab's file:
+
+  ```sh
+  python3 <skill>/scripts/bom_export.py --stackup PCB/stackup/board.kdl \
+      --jlc fab/<board>-jlc-bom.csv --value-only fab/<board>-bom.csv --purchasing fab/<board>-purchasing.csv
+  ```
+
+  It runs `bom_check.py` first and stops on any gap. It takes the package from the footprint
+  (a standard code such as 0402 or SOT-23, else the footprint's own name), with
+  `--package REF=TEXT` for parts whose footprint doesn't say. The JLCPCB file leaves out
+  hand-installed and DNP parts; the Value-only file marks them DNP.
 - Either way, add anything a fab could get wrong: connector orientation (right-angle vs vertical),
   variant, polarity.
 

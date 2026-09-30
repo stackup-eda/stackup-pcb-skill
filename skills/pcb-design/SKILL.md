@@ -22,7 +22,7 @@ level's work. Verification depth stays; what scales is how much gets built aroun
 
 | Level | Examples | Do | Don't |
 |---|---|---|---|
-| **Question or review** | "is this pull-up OK?", "what should I check before fab?" | Answer from the design and datasheets, with the numbers that settle it | Build files, simulations or project scaffolding |
+| **Question or review** | "is this pull-up OK?", "what should I check before fab?" | Lead with the verdict, then only the numbers and datasheet rows that settle it (grep them with `datasheet.py`; don't read whole documents). A quick question gets roughly 100-250 words. A design review is longer, but findings come first | Build files, simulations or project scaffolding; list every caveat you can think of |
 | **Part or value change** | swap a FET, change a resistor | DC bias for the touched nodes; the datasheet rows that matter; tier/stock and a second source; edit the placement; `stackup check`; rerun an existing simulation, or run the template if the node is power/latch/enable | Download every datasheet on the board, write new tooling, restructure the repo |
 | **New circuit** | a power latch, a charger, a sensor block | The full workflow below for that circuit, including a simulation built from `scripts/spice_template.py` | CI setup, READMEs, repo layout, unless asked |
 | **Board to fab** | "we're ordering" | The pre-order checks in `references/kicad.md` and `references/bom-and-fab.md`, and the repo conventions at the end | |
@@ -57,6 +57,7 @@ Bundled scripts (use them instead of writing your own):
 | `jlc_parts.py <MPN> [<MPN>…] --best` | LCSC number, JLCPCB tier and stock for one or many parts |
 | `spice_template.py` + `spice_lib.py` + `ngspice_harness.py` | simulate a circuit: copy the template, edit values, netlist, limits and checks |
 | `bom_check.py` | check a `stackup bom` export for blank or ambiguous lines |
+| `bom_export.py` | write the fab's BOM (JLCPCB format, Value-only, or purchasing) with `value \| MPN \| manufacturer \| package` on every line |
 | `footprint_geometry.py` | measure a footprint to compare against the package drawing |
 | `check_pcb_sync.py` | CI check that the KiCad PCB matches the Stackup design |
 
@@ -159,6 +160,11 @@ Findings from outside tools (a design-review analyzer, another person's checker,
 leads, not facts. Re-derive each one from the design and the datasheets before acting: they can be
 wrong as stated yet point at a real problem, and their assumptions (a diode drop, a threshold) are
 often off.
+
+The same goes for your own reasoning about alternatives. Don't reject an option (a simpler fix, a
+different part) on an argument alone when a short calculation or a run of the simulation you
+already have would settle it. A plausible "that would make the latch turn itself on" has been wrong
+before.
 
 Record decisions so they don't get re-litigated or lost: accepted checker findings and false
 positives (with the reason), deliberately deferred risks (with the reasoning and what would change

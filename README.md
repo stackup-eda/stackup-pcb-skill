@@ -32,6 +32,7 @@ skills/pcb-design/
     spice_lib.py               generic models, stimulus, measurements and a corner-matrix runner
     ngspice_harness.py         run ngspice from Python via ctypes
     bom_check.py               check a `stackup bom` export for blank or ambiguous lines
+    bom_export.py              write the fab's BOM with value | MPN | manufacturer | package per line
     footprint_geometry.py      measure a footprint (library or on the board) to compare with
                                the part's package drawing
     check_pcb_sync.py          CI check that the KiCad PCB matches the Stackup design
