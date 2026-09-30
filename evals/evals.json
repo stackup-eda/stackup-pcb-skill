@@ -57,6 +57,152 @@
         "Lists the production exports (gerbers, drill, BOM, placement/CPL)",
         "Includes a first-board bring-up or bench checklist"
       ]
+    },
+    {
+      "id": 4,
+      "name": "review-latch",
+      "prompt": "Can you review this soft power latch before I order boards? Tell me anything that's wrong and how to fix it.",
+      "expected_output": "Finds the three planted bugs (floating buck EN, button sense pulled up to VSYS on an MCU GPIO, a 10k latch-gate pull-down that starves the gate) with numbers, and no false alarms.",
+      "files": [
+        "evals/files/review-latch/board.kdl",
+        "evals/files/review-latch/manifest.kdl"
+      ],
+      "assertions": [
+        "Finds that PWR_EN (the buck EN) floats when Q_PWR1 is off and proposes a pull-down",
+        "Finds that R_BTN_PU1 pulls PWR_BTN_SENSE (U_MCU1.IO2) up to VSYS, above the ESP32-S3 pin's VDD+0.3 V limit, and moves the pull-up to 3V3",
+        "Finds that the 10 kΩ R_LATCH_G1 and 100 kΩ R_INV_PU1 leave the latch gate far below the AO3400A's 0.65 V minimum threshold on a press, so the board can't turn on, and raises R_LATCH_G1 (e.g. to 1 MΩ)",
+        "Shows numbers for each finding: node voltages at the supply extremes and datasheet thresholds",
+        "Ran stackup check and reports its EN finding",
+        "Reports no false defects (e.g. doesn't call the AO3400A, the diode-OR or the inverter wrong)",
+        "Any edited design passes stackup check with 0 errors; otherwise the exact changes are given",
+        "Recommends or runs a latch simulation after the fixes",
+        "Answers in the reply without project scaffolding (no new README, CI or notes files)",
+        "Takes each threshold it relies on (Vgs(th), EN VIH/VIL, pin limit) from a manufacturer datasheet it actually opened, citing the table or section, rather than from memory",
+        "Checks the side effects of its own fixes (e.g. battery-insertion margin on the latch gate, the inverter's off state after moving the pull-up) instead of stopping at the three bugs"
+      ]
+    },
+    {
+      "id": 5,
+      "name": "pin-assign",
+      "prompt": "Assign the MCU pins for the XBee SPI, the status LED and the three buttons on this board, and wire them up in the design.",
+      "expected_output": "Pins avoid the N16R8's octal-PSRAM GPIO35-37, strap pins and USB/UART0; the XBee ATTN pull-up resistor is kept; a GPIO table; the design checks clean.",
+      "files": [
+        "evals/files/pin-assign/board.kdl",
+        "evals/files/pin-assign/manifest.kdl"
+      ],
+      "assertions": [
+        "Assigns nothing to GPIO35-37 (octal PSRAM on the N16R8 module) and says why",
+        "Assigns nothing to strap pins IO0, IO3, IO45, IO46, or justifies an exception with its rest level at reset",
+        "Leaves USB D+/D- (GPIO19/20) and UART0 (TXD0/RXD0) free, or justifies using them",
+        "Wires the XBee SPI lines, SSEL, SPI_ATTN, ON_SLEEP and DTR to MCU pins that support those functions",
+        "Keeps the XBee's SPI_ATTN pull-up resistor (the part's default bootmode block) instead of relying on a firmware pull-up",
+        "Wires the buttons as active-low inputs and states how they're pulled up",
+        "Drives the LED from an MCU pin with its current checked against the pin's drive",
+        "Gives a GPIO table: pin, net and reason",
+        "The edited design passes stackup check with 0 errors",
+        "Confirms the N16R8's GPIO35-37 restriction from Espressif's module datasheet, not only the Stackup library comment",
+        "Notes that the through-hole XBee3's SPI interface must be enabled (SPI pins are off by default; DOUT held low through reset or configuration over UART) and wires or documents a way to do it",
+        "Keeps the XBee pins that are sampled at XBee power-up off ESP32-S3 GPIOs that glitch low at power-up, or shows why it doesn't matter"
+      ]
+    },
+    {
+      "id": 6,
+      "name": "analyzer-claims",
+      "prompt": "My friend ran an analyzer on my power latch and sent me this report (analyzer-report.txt). Can you fix these issues?",
+      "expected_output": "Rejects E1 (EN already has a pull-down) and W1 (wrong diode drop and wrong FET threshold), confirms and fixes E2 (button pull-up to VSYS on IO2), and explains each.",
+      "files": [
+        "evals/files/analyzer-claims/board.kdl",
+        "evals/files/analyzer-claims/manifest.kdl",
+        "evals/files/analyzer-claims/analyzer-report.txt"
+      ],
+      "assertions": [
+        "Rejects E1 by showing R_PWR_EN_PD1 already pulls PWR_EN down, and adds no second pull-down",
+        "Confirms E2 and fixes it by moving R_BTN_PU1 to 3V3 (or an equivalent that keeps IO2 within its rail), noting the real idle level is VSYS (up to ~4.5 V)",
+        "Rejects W1 by re-deriving the gate voltage with the real diode drop at µA (~2.4 V at 3.0 V) against the AO3400A's 1.45 V maximum threshold, pointing out the report's 0.7 V and 2.5 V assumptions",
+        "Does not swap Q_LATCH1",
+        "Checks the E2 fix doesn't break the inverter (R_INV_BASE1 has its own VSYS pull-up)",
+        "The edited design passes stackup check with 0 errors",
+        "Explains to the user which claims were wrong and why",
+        "Doesn't reject the simpler E2 fix (moving R_BTN_PU1 to 3V3) without evidence: with R_INV_BASE1 at 100 kΩ it keeps the latch off, so any claim otherwise must be backed by a simulation or calculation",
+        "Takes the datasheet numbers it relies on from documents it opened, citing them"
+      ]
+    },
+    {
+      "id": 7,
+      "name": "footprint-check",
+      "prompt": "Before I send this board to fab, can you check that the footprints match the parts?",
+      "expected_output": "Flags D1 (5x5 mm PLCC4 footprint for a 3.2x2.8 mm SK6812MINI-E) and D2 (2-pad SOD-123 for a SOT-323 BAT54W-7-F) from manufacturer drawings; confirms Q1 and R1.",
+      "files": [
+        "evals/files/footprint-check/board.kicad_pcb"
+      ],
+      "assertions": [
+        "Measures the footprints on the board (footprint_geometry.py or equivalent), not just their names",
+        "Flags D1: the 5.0 x 5.0 mm PLCC4 footprint doesn't fit the SK6812MINI-E's 3.2 x 2.8 mm reverse-mount body",
+        "Flags D2: a 2-pad SOD-123 footprint for BAT54W-7-F, which is a 3-pin SOT-323 part",
+        "Confirms Q1 (SOT-23, AO3400A) and R1 (0402) match their parts",
+        "Takes the part dimensions from the manufacturers' datasheets and cites them",
+        "Proposes correct footprints, noting the reverse-mount LED needs a board cutout",
+        "Leaves the original board file unmodified unless it says what it changed",
+        "Checks pad numbering and pin 1 for the reverse-mount LED, which is mirrored relative to a top-mount footprint",
+        "Notes the reverse-mount LED's board cutout and its clearance to the pads (a DRC or fab rule impact)"
+      ]
+    },
+    {
+      "id": 8,
+      "name": "bom-export",
+      "prompt": "Export the BOM for JLCPCB assembly and make sure it's complete.",
+      "expected_output": "Every line has manufacturer, MPN, LCSC and an unambiguous package; the BAT54W footprint/package mismatch and the connector orientation are caught even though the checker doesn't flag them.",
+      "files": [
+        "evals/files/bom-export/board.kdl",
+        "evals/files/bom-export/manifest.kdl"
+      ],
+      "assertions": [
+        "Exports with stackup bom (--locked) and checks it with bom_check.py or equivalent",
+        "Adds a verified LCSC number for R1",
+        "Gives C1 a specific part: manufacturer, MPN, voltage rating, dielectric and LCSC",
+        "Removes the comma from Q1's value",
+        "Catches that D1's library-default MPN BAT54W-7-F is SOT-323 while its footprint is SOD-123, and resolves it",
+        "Adds the right-angle orientation to J1's value or description",
+        "The final design passes stackup check and bom_check --fab jlc with 0 problems",
+        "Delivers the BOM CSV",
+        "Reports each line's JLCPCB tier and stock, and flags low-stock parts (BAT54W-7-F had only 84) with a second source",
+        "Gets package and description to the fab even though stackup bom has no such columns (long-form values on non-passives, or added columns)"
+      ]
+    },
+    {
+      "id": 9,
+      "name": "quick-question",
+      "prompt": "Quick question: is 10k plus 1µF on the ESP32-S3's EN pin OK?",
+      "expected_output": "A short yes with the ~10 ms time constant and Espressif's recommendation, and no files.",
+      "files": [],
+      "assertions": [
+        "Answers yes and gives the RC time constant (about 10 ms)",
+        "Cites Espressif's datasheet or hardware design guidelines for the EN (CHIP_PU) RC",
+        "Explains why the delay matters (EN must rise after the supply is stable)",
+        "Writes no files besides response.md",
+        "Stays short: under about 300 words and at most 8 tool calls",
+        "Takes the EN timing requirement from Espressif's document it actually opened (or states it's from memory), citing the table"
+      ]
+    },
+    {
+      "id": 10,
+      "name": "part-substitute",
+      "prompt": "The AO3401A for Q_PWR1 is out of stock at JLC this week. What can I use instead? Same footprint please.",
+      "expected_output": "A pin-compatible SOT-23 P-FET checked against this circuit (threshold vs the gate drive at 3.0 V, Rds(on) at low Vgs, Vds), with tier and stock, the placement updated, and no unnecessary simulation.",
+      "files": [
+        "evals/files/latch/board.kdl",
+        "evals/files/latch/manifest.kdl"
+      ],
+      "assertions": [
+        "Looks up candidates' JLCPCB tier and stock, several parts per call",
+        "Confirms the candidate's SOT-23 pinout (G1 S2 D3) from the manufacturer's drawing",
+        "Checks the candidate against the circuit: |Vgs(th)| max below the gate drive at VSYS 3.0 V, Rds(on) specified at |Vgs| of 2.5 V or less, and Vds rating well above 4.5 V",
+        "Checks the off state (R_GATE1 holds the gate at VSYS) against the candidate's leakage",
+        "Updates Q_PWR1 with manufacturer, MPN and LCSC, and stackup check passes with 0 errors",
+        "Checks the swap's effect on the circuit with numbers (hand calculation, or rerunning the latch simulation on this power/enable node) without building new tooling beyond that",
+        "Names a second source",
+        "Checks the premise: looks up the AO3401A's actual stock and tells the user what it found"
+      ]
     }
   ]
 }

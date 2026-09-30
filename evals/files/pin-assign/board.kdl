@@ -1,0 +1,30 @@
+// Controller board: ESP32-S3-WROOM-1-N16R8 module (16 MB flash, 8 MB octal PSRAM), an XBee3
+// radio in SPI mode, one status LED and three user buttons. 3.3 V comes from an external supply.
+// The parts are placed; the MCU pin assignments (the TODOs below) are not done yet.
+use "@stackup/passives"
+use "@stackup/connector/power-jack"
+use "@stackup/micro/esp32s3"
+use "@stackup/radio/xbee3"
+use "@stackup/discrete/led/led"
+use "@stackup/switch/push-button"
+
+design controller {
+    stock { packages imperial="0402" }
+
+    place power-jack V3 voltage="3.3V"
+    place esp32-s3-wroom-1 U1 v3v3=V3.out manufacturer="Espressif Systems" \
+        mpn="ESP32-S3-WROOM-1-N16R8" value="ESP32-S3-WROOM-1-N16R8"
+    place xbee3-zigbee U2 vcc=V3.out
+    place led D1 value="green"
+    place resistor R_LED value="680Ω" intent=series
+    place push-button SW1
+    place push-button SW2
+    place push-button SW3
+
+    // TODO: drive the status LED (D1 through R_LED) from an MCU pin
+    circuit SW1.b V3.out.gnd
+    circuit SW2.b V3.out.gnd
+    circuit SW3.b V3.out.gnd
+    // TODO: XBee SPI (SCK, MOSI, MISO, SSEL), SPI_ATTN, ON_SLEEP and DTR (sleep request) to the MCU
+    // TODO: SW1-SW3 to MCU inputs (active low: pressed pulls the input to GND; no pull-ups placed yet)
+}

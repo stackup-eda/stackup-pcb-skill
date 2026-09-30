@@ -1,0 +1,15 @@
+circuit-lint v0.9 — design "latch" (board.kdl)
+Assumptions: silicon diode Vf = 0.7 V; MOSFET thresholds from generic small-signal N-FET (2N7002 class) unless specified.
+
+[E1] FLOATING-ENABLE  net PWR_EN
+     U_BUCK1.EN has no pull-up or pull-down. When Q_PWR1 is off the enable input floats and the
+     regulator may turn on by itself. Add a pull-down.
+
+[E2] PIN-OVERVOLTAGE  net PWR_BTN_SENSE -> U_MCU1.IO2
+     PWR_BTN_SENSE idles at up to 4.6 V (pulled up by R_BTN_PU1 to VSYS). ESP32-S3 GPIO maximum is
+     VDD + 0.3 V = 3.6 V. Also back-feeds the 3V3 rail through the pin's clamp diode when the MCU is off.
+
+[W1] WEAK-GATE-DRIVE  net PWR_LATCH_G -> Q_LATCH1
+     On a button press the gate reaches (3.0 V - 0.7 V) x 1M / 1.1M = 2.09 V at minimum VSYS, below
+     the 2.5 V worst-case gate threshold. The latch may not turn on at low battery. Consider a
+     lower-threshold MOSFET.
