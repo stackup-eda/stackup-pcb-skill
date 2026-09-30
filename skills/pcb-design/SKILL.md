@@ -15,6 +15,21 @@ an enable pin has no rest state, a GPIO sits above its rail. Connectivity checks
 they say nothing about voltages. So every change is judged by its DC operating point and, where it
 matters, a simulation, not by a clean check.
 
+## Match the effort to the task
+
+Decide which level the request is before starting, and do that level's work well rather than every
+level's work. Verification depth stays; what scales is how much gets built around it.
+
+| Level | Examples | Do | Don't |
+|---|---|---|---|
+| **Question or review** | "is this pull-up OK?", "what should I check before fab?" | Answer from the design and datasheets, with the numbers that settle it | Build files, simulations or project scaffolding |
+| **Part or value change** | swap a FET, change a resistor | DC bias for the touched nodes; the datasheet rows that matter; tier/stock and a second source; edit the placement; `stackup check`; rerun an existing simulation, or run the template if the node is power/latch/enable | Download every datasheet on the board, write new tooling, restructure the repo |
+| **New circuit** | a power latch, a charger, a sensor block | The full workflow below for that circuit, including a simulation built from `scripts/spice_template.py` | CI setup, READMEs, repo layout, unless asked |
+| **Board to fab** | "we're ordering" | The pre-order checks in `references/kicad.md` and `references/bom-and-fab.md`, and the repo conventions at the end | |
+
+When something below the current level is missing (no CI check, no datasheet folder, no bench
+checklist), mention it in one line instead of building it.
+
 ## Toolchain
 
 | Job | Tool | Notes |
@@ -25,6 +40,18 @@ matters, a simulation, not by a clean check.
 | Purchasing BOM | `stackup bom <board.kdl> --locked` | Separate manufacturer / MPN / distributor columns |
 | Circuit simulation | **ngspice** via KiCad's bundled `libngspice` | Python + ctypes; see `scripts/ngspice_harness.py` |
 | Part availability | JLCPCB parts search, then Mouser / DigiKey / Adafruit stock | See `scripts/jlc_parts.py` |
+
+Bundled scripts (use them instead of writing your own):
+
+| Script | Use it to |
+|---|---|
+| `stackup_index.py [filter]` | list the library's parts and blocks, with packages, MPNs, features and parameters |
+| `datasheet.py fetch/sections/grep/page` | download a datasheet once, read tables as text, render only drawing pages |
+| `jlc_parts.py <MPN>` | find the LCSC number, JLCPCB tier and stock |
+| `spice_template.py` + `spice_lib.py` + `ngspice_harness.py` | simulate a circuit: copy the template, edit values, netlist, limits and checks |
+| `bom_check.py` | check a `stackup bom` export for blank or ambiguous lines |
+| `footprint_geometry.py` | measure a footprint to compare against the package drawing |
+| `check_pcb_sync.py` | CI check that the KiCad PCB matches the Stackup design |
 
 Read [references/stackup.md](references/stackup.md) before writing or editing KDL. The language is
 young and specific: values are stated, facts are derived, and it never picks a part for you.
@@ -64,9 +91,6 @@ Work through these in order. Skipping ahead to layout is how bad boards get made
    Bring the first board up in stages: current-limited bench supply first, check every rail and the
    idle current before fitting or powering modules, then check each enable/reset/strap level at
    power-up before loading full firmware. Inspect assembled boards for orientation and substitutions.
-
-For a small change (swap a resistor value, change a part), steps 3, 6 and 8 still apply, and step 5
-applies if the part sits on a power, latch, sense, or enable node.
 
 ## Rules that are easy to get wrong
 
@@ -136,7 +160,8 @@ or a design-review file, and in Stackup `ignore … reason=` where it applies.
 
 ## Repo conventions
 
-Hardware repos keep the design under `PCB/`: `PCB/stackup/board.kdl`, `PCB/stackup/parts.kdl`,
+These describe a board headed to fab. Set up what's missing only at that level or when asked;
+otherwise note the gap. Hardware repos keep the design under `PCB/`: `PCB/stackup/board.kdl`, `PCB/stackup/parts.kdl`,
 the KiCad project beside them, `PCB/datasheets/` for manufacturer PDFs, and `scripts/spice/` for
 simulations. The Stackup CLI is pinned through a Cargo-locked crate (`ci/stackup/`) so CI and local
 runs use the same version, and the parts library is pinned by commit in `manifest.kdl`. Follow what an

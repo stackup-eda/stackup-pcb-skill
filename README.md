@@ -25,8 +25,13 @@ skills/pcb-design/
   references/                  read on demand: stackup, dc-bias, spice, parts-sourcing,
                                mcu-pins, bom-and-fab, kicad, failure-patterns
   scripts/
-    ngspice_harness.py         run ngspice from Python via ctypes; pass/fail helpers
+    stackup_index.py           list the Stackup library's parts and blocks
+    datasheet.py               fetch a datasheet once; read tables as text, render only drawings
     jlc_parts.py               JLCPCB part lookup: LCSC number, tier, stock
+    spice_template.py          copy-and-edit SPICE checks for a power latch (insertion/press/shutdown)
+    spice_lib.py               generic models, stimulus, measurements and a corner-matrix runner
+    ngspice_harness.py         run ngspice from Python via ctypes
+    bom_check.py               check a `stackup bom` export for blank or ambiguous lines
     footprint_geometry.py      measure a footprint (library or on the board) to compare with
                                the part's package drawing
     check_pcb_sync.py          CI check that the KiCad PCB matches the Stackup design
@@ -73,5 +78,7 @@ python3 -m unittest discover -s tests -v
 python3 skills/pcb-design/scripts/ngspice_harness.py --selftest
 ```
 
-The simulation tests run against KiCad's libngspice when it is installed and are skipped otherwise.
-`jlc_parts.py` tests use fixtures and need no network.
+The simulation tests run against KiCad's libngspice, the PDF tests against poppler, and the
+documentation test (the Stackup example in `references/stackup.md`) against the `stackup` CLI; each
+is skipped when its tool isn't installed. Network lookups (`jlc_parts.py`, `datasheet.py fetch`) are
+tested with fixtures.

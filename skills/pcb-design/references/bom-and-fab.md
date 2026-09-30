@@ -78,10 +78,21 @@ details into what the fab receives one of two ways:
 - Either way, add anything a fab could get wrong: connector orientation (right-angle vs vertical),
   variant, polarity.
 
-Prefer a script that builds and checks these fields over editing them by hand, and run it in CI.
-Read the BOM through `stackup bom --locked` (so library defaults are included) rather than parsing
-the KDL, use [../scripts/jlc_parts.py](../scripts/jlc_parts.py) to find LCSC numbers and
-Basic-library alternatives, and have a human review matches before writing them into the KDL.
+Check the export with [../scripts/bom_check.py](../scripts/bom_check.py) instead of writing a
+checker:
+
+```sh
+python3 <skill>/scripts/bom_check.py --stackup PCB/stackup/board.kdl --fab jlc \
+    --allow-no-mpn J3                # hand-sourced parts with no MPN, listed on purpose
+```
+
+It flags blank value/manufacturer/MPN, missing LCSC numbers on assembled lines (`--fab jlc`), a
+package that can't be read from the footprint or value, and values that would force CSV quoting.
+`--long-values` also requires each value to carry its MPN, for fabs that read only the Value
+column. Run it in CI too. It reads the BOM through `stackup bom --locked` (so library defaults are
+included) rather than parsing the KDL. To fill the gaps it finds, use
+[../scripts/jlc_parts.py](../scripts/jlc_parts.py) to find LCSC numbers and Basic-library
+alternatives, and have a human review matches before writing them into the KDL.
 
 ## After any part change
 

@@ -167,8 +167,9 @@ def value_at(t, v, when):
     return v[-1]
 
 
-def report(results, out=sys.stdout):
+def report(results, out=None):
     """Print (label, ok, detail) rows; return a process exit code (1 if anything failed)."""
+    out = out or sys.stdout
     failed = 0
     for label, ok, detail in results:
         print(f"{'PASS' if ok else 'FAIL'}  {label:36s} {detail}", file=out)

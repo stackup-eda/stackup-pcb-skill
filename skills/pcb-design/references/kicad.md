@@ -88,12 +88,20 @@ whether a few millimetres or a layer count change would move the board into a ch
 
 1. `stackup check --locked` clean (or every note explained).
 2. The PCB is in sync with Stackup (plugin or CI check reports no changes).
-3. DRC: zero errors; each remaining warning documented with a reason.
-4. Unrouted nets: zero.
-5. Footprints match the manufacturer package drawing (pad size, pitch, pin 1, orientation) for every
-   non-standard part, and 3D models are present for the STEP export.
-6. BOM and position files regenerated; see [bom-and-fab.md](bom-and-fab.md).
-7. The DC-bias and SPICE results for changed circuits are recorded, and the bench checklist is written.
+3. The fab's design rules are loaded in Board Setup (minimum track/space, drill, annular ring, via,
+   solder-mask sliver), and the stackup (layers, thickness, copper weight) matches what you'll order.
+4. Zones refilled, then DRC: zero errors and zero unrouted nets; each remaining warning documented
+   with a reason. Edge.Cuts is one closed outline.
+5. Footprints match the manufacturer package drawing (see Footprints above), and 3D models are
+   present for the STEP export.
+6. Silkscreen: board name, revision and date updated before export; designators off the pads; pin-1
+   and polarity marks where the assembler will look.
+7. BOM and position files regenerated (see [bom-and-fab.md](bom-and-fab.md)); the designators in the
+   BOM and the placement (CPL) file match each other and the board, excluding DNP parts.
+8. Gerbers opened in a viewer: every layer present, drills on pads, paste only on SMD pads.
+9. The DC-bias and SPICE results for changed circuits are recorded, and the bench checklist is
+   written.
+10. Tag the commit the fab files came from (e.g. `<board>-rev<X>`), so an order traces to its source.
 
 ## Scripting
 
