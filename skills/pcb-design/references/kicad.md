@@ -48,11 +48,15 @@ assignment. Check the geometry of every footprint against the part:
    needs a board cutout, a right-angle connector overhangs), and any polarity or orientation mark.
 2. **Measure the footprint actually on the board,** not the one you think is assigned:
    ```sh
+   python3 <skill>/scripts/footprint_geometry.py --pcb PCB/<board>.kicad_pcb          # every footprint
    python3 <skill>/scripts/footprint_geometry.py --pcb PCB/<board>.kicad_pcb --ref D1
    python3 <skill>/scripts/footprint_geometry.py LED_SMD:<Name>        # a library candidate
    ```
-   It prints pad count and numbering, pad positions and sizes, pitch, pad spans, the body (Fab
-   layer) and the courtyard, in the footprint's own unrotated frame, like the drawing's top view.
+   It prints the footprint's fields (value, manufacturer, MPN, whatever the board carries), pad
+   count and numbering, pad positions and sizes, pitch, pad spans, the body (Fab layer), the
+   courtyard, and any cutout the footprint puts on Edge.Cuts with its smallest gap to a pad, all in
+   the footprint's own unrotated frame, like the drawing's top view. Identify the part from those
+   fields; don't report a board as missing MPNs without looking at them.
 3. **Compare in a table** (drawing vs footprint) and show it. Pad count and numbering must match
    exactly. Body size must match the drawing. Pitch and spans should be within about 0.05 mm, and pad
    sizes close to the recommended land pattern. A body whose size differs by millimetres means a
@@ -77,6 +81,10 @@ Also:
   Mark the footprint unverified until then.
 - **Pin 1 and rotation**: check that the footprint's pad 1 matches the datasheet's pin 1 and that the
   silkscreen's pin-1 mark sits where an assembler will look for it.
+- **Cutouts in a footprint** (reverse-mount LEDs, slots) are board edges. Compare the reported
+  cutout-to-pad gap with the fab's minimum copper-to-edge clearance and make sure DRC checks it.
+  Router-bit relief arcs at a cutout's inside corners bulge toward the pads, so the smallest gap can
+  be at a corner rather than along a straight side.
 
 ## Board outline and cost
 

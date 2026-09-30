@@ -77,10 +77,10 @@ class FootprintFixtureTests(unittest.TestCase):
         self.assertEqual(self.measure("R1")["pad_count"], 2)
 
     def test_parts_named_in_fields(self):
-        with open(self.PCB) as f:
-            text = f.read()
-        self.assertIn('"Manufacturer_Part_Number" "SK6812MINI-E"', text)
-        self.assertIn('"Manufacturer_Part_Number" "BAT54W-7-F"', text)
+        # The tool must show these: a run that can't see them concludes the board has no MPNs.
+        self.assertEqual(self.measure("D1")["properties"]["Manufacturer_Part_Number"], "SK6812MINI-E")
+        self.assertEqual(self.measure("D2")["properties"]["Manufacturer_Part_Number"], "BAT54W-7-F")
+        self.assertEqual(self.measure("D2")["properties"]["MF"], "Diodes Incorporated")
 
 
 @unittest.skipUnless(HAVE_STACKUP, "Stackup CLI not installed")
@@ -107,6 +107,15 @@ class StackupFixtureTests(unittest.TestCase):
             text = f.read()
         self.assertRegex(text, r'circuit "Q_PWR1.SOURCE".*"R_BTN_PU1.A".*name="VSYS"')
         self.assertIn('"R_PWR_EN_PD1.node"', text)
+
+    def test_latch_fixtures_export_a_complete_bom(self):
+        # Every part has an MPN, including the ones the ESP32-S3 block places itself, so a run
+        # that exports the BOM isn't sent after gaps the case isn't about.
+        # review-latch still exits 1: `stackup bom` also reports the planted floating EN.
+        for fixture, expected_code in (("review-latch", 1), ("analyzer-claims", 0)):
+            code, out = stackup(fixture, "bom", "board.kdl", "--locked")
+            self.assertEqual(code, expected_code, f"{fixture}: {out}")
+            self.assertNotIn("has no MPN", out, fixture)
 
     def test_pin_assign_is_clean_and_accepts_the_psram_trap(self):
         self.assertEqual(summary(stackup("pin-assign", "check", "board.kdl", "--locked")[1]),

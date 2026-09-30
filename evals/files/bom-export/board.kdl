@@ -27,6 +27,7 @@ design sensor_power {
     circuit "R1.node" "U1.EN" name="BUCK_EN"   // always on: EN pulled up to VBAT
     circuit "D1.K" name="VBAT_SENSE"
     circuit "J1.2" "Q1.GATE" "R1.rail.gnd" "U1.GND" "C1.B" name="GND"
-    nc "U1.SW" "U1.FB" note="inductor and feedback divider are on the buck sheet"
+    circuit "U1.SW" name="BUCK_SW"   // to the inductor on the buck sheet
+    circuit "U1.FB" name="BUCK_FB"   // to the feedback divider on the buck sheet
     nc "D1.NC"
 }

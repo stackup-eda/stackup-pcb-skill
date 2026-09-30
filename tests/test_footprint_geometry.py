@@ -1,5 +1,7 @@
 import contextlib
 import io
+import json
+import math
 import os
 import sys
 import tempfile
@@ -38,6 +40,20 @@ BOARD = """(kicad_pcb
     (pad "1" thru_hole circle (at 0 0) (size 1.6 1.6) (drill 0.8) (layers "*.Cu"))
     (pad "2" thru_hole oval (at 2.54 0) (size 1.6 1.6) (drill oval 0.8 1.2) (layers "*.Cu"))
   )
+)
+"""
+
+# A reverse-mount part: a 3.4 x 3.0 mm cutout on Edge.Cuts, rect pads whose inner edges sit
+# 0.35 mm outside it, and the fields a board carries.
+REVERSE_MOUNT = """(footprint "Test:REV"
+  (property "Reference" "D1" (at 0 0) (layer "F.SilkS"))
+  (property "Value" "SK6812MINI-E" (at 0 0) (layer "F.Fab"))
+  (property "Datasheet" "" (at 0 0) (layer "F.Fab"))
+  (property "Manufacturer_Part_Number" "SK6812MINI-E" (at 0 0) (layer "F.Fab"))
+  (attr smd)
+  (fp_rect (start -1.7 -1.5) (end 1.7 1.5) (layer "Edge.Cuts"))
+  (pad "1" smd rect (at -2.725 0.75) (size 1.35 0.82) (layers "B.Cu"))
+  (pad "4" smd rect (at 2.725 0.75) (size 1.35 0.82) (layers "B.Cu"))
 )
 """
 
@@ -120,6 +136,78 @@ class GraphicsTests(unittest.TestCase):
         self.assertIsNone(g.layer_box(fp, "CrtYd"))
 
 
+class PropertiesTests(unittest.TestCase):
+    def test_fields_reported_and_empty_ones_dropped(self):
+        m = g.measure(g.load_library_footprint(REVERSE_MOUNT))
+        self.assertEqual(m["properties"], {"Reference": "D1", "Value": "SK6812MINI-E",
+                                           "Manufacturer_Part_Number": "SK6812MINI-E"})
+        report = g.format_report(m)
+        self.assertIn("Manufacturer_Part_Number: SK6812MINI-E", report)
+        self.assertNotIn("Datasheet", report)
+
+
+class EdgeCutsTests(unittest.TestCase):
+    def test_cutout_size_and_pad_clearance(self):
+        m = g.measure(g.load_library_footprint(REVERSE_MOUNT))
+        self.assertAlmostEqual(m["edge_cuts"]["width"], 3.4)
+        self.assertAlmostEqual(m["edge_cuts"]["height"], 3.0)
+        self.assertAlmostEqual(m["edge_cuts_pad_clearance"]["gap"], 0.35)
+        self.assertIn("3.400 x 3.000, closest pad", g.format_report(m))
+
+    def test_no_cutout(self):
+        m = g.measure(g.load_library_footprint(FOOTPRINT))
+        self.assertIsNone(m["edge_cuts"])
+        self.assertIsNone(m["edge_cuts_pad_clearance"])
+        self.assertIn("Edge.Cuts cutout:  none", g.format_report(m))
+
+    def test_rounded_pad_corners_add_clearance(self):
+        # A cutout corner diagonal to a pad corner: 0.3 mm apart in x and y.
+        segment = [((0.0, 0.0), (0.0, -1.0))]
+        square = g.Pad("1", "smd", "rect", 0.8, 0.8, 1.0, 1.0)
+        rounded = g.Pad("1", "smd", "roundrect", 0.8, 0.8, 1.0, 1.0, corner_radius=0.25)
+        self.assertAlmostEqual(g.pad_clearance(segment, [square])[0], 0.4243, places=4)
+        # Corner circle center at (0.55, 0.55), radius 0.25: 0.7778 - 0.25.
+        self.assertAlmostEqual(g.pad_clearance(segment, [rounded])[0], 0.5278, places=4)
+
+    def test_overlap_is_zero(self):
+        pad = g.Pad("1", "smd", "rect", 0.0, 0.0, 1.0, 1.0)
+        self.assertEqual(g.pad_clearance([((0.2, 0.0), (3.0, 0.0))], [pad]), (0.0, "1"))
+        self.assertEqual(g.pad_clearance([((-2.0, 0.0), (2.0, 0.0))], [pad]), (0.0, "1"))
+        self.assertIsNone(g.pad_clearance([], [pad]))
+
+    def test_pad_corner_radius_from_shape(self):
+        fp = g.parse('(footprint "X"'
+                     ' (pad "1" smd roundrect (at 0 0) (size 1 0.8) (roundrect_rratio 0.1))'
+                     ' (pad "2" smd roundrect (at 2 0) (size 1 0.8))'
+                     ' (pad "3" thru_hole oval (at 4 0) (size 1.2 1.6) (drill 0.8))'
+                     ' (pad "4" smd rect (at 6 0) (size 1 1)))')[0]
+        radii = [p.corner_radius for p in g.read_pads(fp)]
+        self.assertEqual([round(r, 4) for r in radii], [0.08, 0.2, 0.6, 0.0])
+
+    def test_arc_follows_the_mid_point(self):
+        # Quarter circle of radius 1 about the origin, bulging toward (-0.707, -0.707).
+        pts = g.arc_points([-1, 0], [-math.sqrt(0.5), -math.sqrt(0.5)], [0, -1])
+        self.assertAlmostEqual(min(p[0] for p in pts), -1.0)
+        self.assertAlmostEqual(max(p[0] for p in pts), 0.0)
+        for x, y in pts:
+            self.assertAlmostEqual(math.hypot(x, y), 1.0)
+        # The same ends through the other side of the circle sweep 270 degrees.
+        pts = g.arc_points([-1, 0], [math.sqrt(0.5), math.sqrt(0.5)], [0, -1])
+        self.assertAlmostEqual(max(p[0] for p in pts), 1.0, places=2)
+        self.assertEqual(g.arc_points([0, 0], [1, 1], [2, 2]), [[0, 0], [2, 2]])
+
+    def test_every_graphic_kind_becomes_segments(self):
+        fp = g.parse('(footprint "X"'
+                     ' (fp_line (start 0 0) (end 1 0) (layer "Edge.Cuts"))'
+                     ' (fp_circle (center 5 5) (end 6 5) (layer "Edge.Cuts"))'
+                     ' (fp_poly (pts (xy 0 0) (xy 1 0) (xy 1 1)) (layer "Edge.Cuts"))'
+                     ' (fp_line (start 0 0) (end 9 9) (layer "F.SilkS")))')[0]
+        segments = g.edge_cut_segments(fp)
+        self.assertEqual(len(segments), 1 + g.ARC_STEPS + 3)
+        box = g.box_of([pt for seg in segments for pt in seg])
+        self.assertAlmostEqual(box.max_x, 6.0)
+
+
 class LibraryLookupTests(unittest.TestCase):
     def test_finds_in_lib_dir_before_defaults(self):
         with tempfile.TemporaryDirectory() as d:
@@ -165,6 +253,18 @@ class MainTests(unittest.TestCase):
             code, _, err = self.run_main(["--pcb", pcb, "--ref", "U9"])
             self.assertEqual(code, 1)
             self.assertIn("U9", err)
+
+    def test_whole_board(self):
+        with tempfile.TemporaryDirectory() as d:
+            pcb = os.path.join(d, "b.kicad_pcb")
+            with open(pcb, "w") as f:
+                f.write(BOARD)
+            code, out, _ = self.run_main(["--pcb", pcb])
+            self.assertEqual(code, 0)
+            self.assertIn("Reference: D1", out)
+            self.assertIn("Reference: R1", out)
+            code, out, _ = self.run_main(["--pcb", pcb, "--json"])
+            self.assertEqual([m["properties"]["Reference"] for m in json.loads(out)], ["D1", "R1"])
 
 
 if __name__ == "__main__":

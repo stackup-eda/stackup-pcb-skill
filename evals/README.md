@@ -27,12 +27,16 @@ files it needs, a description of a good result, and pass/fail assertions for gra
   the real idle level is VSYS, not 4.6 V); W1 is false (the real diode drop at µA is ~0.3 V, so
   the gate reaches ~2.44 V at 3.0 V, and the FET is an AO3400A with a 1.45 V maximum threshold).
 - **footprint-check:** D1 is an SK6812MINI-E on a 5 × 5 mm PLCC4 footprint; D2 is a BAT54W-7-F
-  (SOT-323) on a 2-pad SOD-123 footprint. Q1 and R1 are correct.
+  (SOT-323) on a 2-pad SOD-123 footprint. Q1 and R1 are correct. Every footprint carries MF and
+  Manufacturer_Part_Number fields. KiCad's `LED_SK6812MINI-E_3.2x2.8mm_P1.5mm_ReverseMount` has a
+  3.4 × 3.0 mm Edge.Cuts cutout 0.35 mm from the pads along its sides; its 0.5 mm corner-relief
+  arcs bring it to about 0.25 mm from pads 2 and 4 (`footprint_geometry.py` reports 0.248 mm).
 - **bom-export:** `bom_check.py` finds R1's missing LCSC, C1's missing part and Q1's comma
   (`stackup bom` at the pinned commit also reports C1's missing MPN and exits 1). It
   can't see that D1's library-default MPN (BAT54W-7-F, SOT-323) disagrees with its SOD-123
   footprint, or that J1's value doesn't say right-angle. The circuit itself is meant to be sound:
-  R1 pulls the buck's EN up to VBAT (always on), and VBAT_SENSE goes to a divider on another sheet.
+  R1 pulls the buck's EN up to VBAT (always on), VBAT_SENSE goes to a divider on another sheet,
+  and the buck's SW and FB leave as named nets for the inductor and divider on the buck sheet.
 
 Each case also has depth checks that a found-the-bug check can't separate: datasheet numbers taken
 from documents the run actually opened, side effects of the fixes, XBee3 SPI-mode enabling, the
@@ -41,6 +45,13 @@ fix without evidence (the pull-up to 3V3 in analyzer-claims is safe with R_INV_B
 
 Fixture fixes after the first run of these cases (2026-09-29): the pin-assign LED circuit no longer
 names the 3V3 rail, and bom-export's buck EN is pulled up instead of held off by an MCU it powers.
+
+After the second run (2026-09-30): the buck's SW and FB are named nets to the buck sheet instead of
+`nc` (bom-export, review-latch, analyzer-claims), and review-latch and analyzer-claims give the
+ESP32-S3 block's own support parts MPNs, so `stackup bom` runs clean on them. Assertions changed:
+case 1's threshold check covers a design where the buck EN is the latch, case 2 splits PCB sync
+from the simulation rerun, case 7 states the cutout gap and adds reading the footprints' fields,
+case 9 allows fetched datasheets, and case 10 is graded from the transcript.
 
 The fixtures are checked by `tests/test_eval_fixtures.py`, so a library or CLI change that moves
 a planted bug fails a test instead of silently changing an eval.
@@ -66,5 +77,7 @@ Rules:
 ```
 
 Grade each run against the case's `assertions`, re-running `stackup check` and
-`bom_check.py` on any design a run produced rather than trusting its report. Results go in the
+`bom_check.py` on any design a run produced rather than trusting its report. Grade tool-call
+counts (case 9) and lookup batching (case 10) from the run's transcript; the outputs folder
+doesn't show them. Results go in the
 gitignored `pcb-design-workspace/`.
