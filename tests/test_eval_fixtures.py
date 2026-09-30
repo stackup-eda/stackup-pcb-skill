@@ -119,8 +119,12 @@ class StackupFixtureTests(unittest.TestCase):
     def test_bom_export_gaps(self):
         code, out = stackup("bom-export", "check", "board.kdl", "--locked")
         self.assertEqual(summary(out), (0, 0, 0), out)
-        code, csv_text = stackup("bom-export", "bom", "board.kdl", "--locked")
-        self.assertEqual(code, 0, csv_text)
+        # Stackup at the pinned commit reports parts with no MPN and exits 1, but still writes
+        # the CSV; C1 is the planted part without one.
+        code, output = stackup("bom-export", "bom", "board.kdl", "--locked")
+        self.assertEqual(code, 1, output)
+        self.assertIn("`C1` has no MPN for the BOM", output)
+        csv_text = output[:output.index("\n/") + 1] if "\n/" in output else output
         rows = bom_check.read_csv(csv_text)
         problems = bom_check.check_rows(rows, fab="jlc")
         self.assertEqual(sorted(problems), sorted([
