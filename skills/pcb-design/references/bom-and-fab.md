@@ -92,7 +92,7 @@ package that can't be read from the footprint or value, and values that would fo
 column. Run it in CI too. It reads the BOM through `stackup bom --locked` (so library defaults are
 included) rather than parsing the KDL. To fill the gaps it finds, use
 [../scripts/jlc_parts.py](../scripts/jlc_parts.py) to find LCSC numbers and Basic-library
-alternatives, and have a human review matches before writing them into the KDL.
+alternatives (pass every MPN in one call with `--exact --best`), and have a human review matches before writing them into the KDL.
 
 ## After any part change
 

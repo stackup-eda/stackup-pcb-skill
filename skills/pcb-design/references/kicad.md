@@ -103,6 +103,35 @@ whether a few millimetres or a layer count change would move the board into a ch
    written.
 10. Tag the commit the fab files came from (e.g. `<board>-rev<X>`), so an order traces to its source.
 
+## kicad-cli commands (verified on KiCad 10.0.5)
+
+Use these rather than writing flags from memory; if the installed version differs, check
+`kicad-cli <command> --help` before relying on a flag.
+
+```sh
+K=/Applications/KiCad/KiCad.app/Contents/MacOS/kicad-cli
+B=PCB/<board>.kicad_pcb
+
+# DRC: refills zones in memory (the file isn't saved unless you add --save-board).
+# Don't pass --schematic-parity: it's an off-by-default switch, and a Stackup board has no schematic.
+$K pcb drc --refill-zones --severity-all --exit-code-violations --format report -o fab/drc.rpt $B
+
+$K pcb export gerbers --board-plot-params -o fab/gerbers/ $B          # the board's saved plot settings
+$K pcb export drill --excellon-separate-th --generate-map --map-format gerberx2 -o fab/gerbers/ $B
+$K pcb export pos --format csv --units mm --side both --exclude-dnp -o fab/<board>-pos.csv $B
+$K pcb export step -o fab/<board>.step $B
+```
+
+With `--exit-code-violations`, DRC exits non-zero (5 on KiCad 10) when anything is reported, and
+`--severity-all` includes warnings, so a board with documented, accepted warnings still exits 5: read
+the report rather than treating the exit code alone as pass/fail. Tested on a real 4-layer board:
+the export commands produce the Gerber set, PTH/NPTH drill files with maps, a mm CSV placement file
+and a STEP, and DRC with `--refill-zones` leaves the board file byte-identical.
+
+`pcb export pos` defaults to inches (`--units in`), so pass `--units mm`. Drill output defaults to
+millimetres. There is no PCB-side BOM export in kicad-cli: use `stackup bom` (see
+[bom-and-fab.md](bom-and-fab.md)), or the Fabrication Toolkit plugin for JLCPCB's format.
+
 ## Scripting
 
 `pcbnew` from KiCad's bundled Python can read and edit boards headlessly. Close the board in KiCad

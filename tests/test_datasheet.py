@@ -104,6 +104,59 @@ class PopplerTests(unittest.TestCase):
             self.assertTrue(os.path.exists(out.getvalue().strip()))
 
 
+class BatchTests(unittest.TestCase):
+    def test_fetch_targets(self):
+        self.assertEqual(ds.fetch_targets(["https://x/a.pdf"], name="A"), [("A", "https://x/a.pdf")])
+        self.assertEqual(ds.fetch_targets(["A=https://x/a.pdf", "B=http://y/b.pdf"]),
+                         [("A", "https://x/a.pdf"), ("B", "http://y/b.pdf")])
+        with self.assertRaises(ValueError):
+            ds.fetch_targets(["https://x/a.pdf", "https://x/b.pdf"], name="A")
+        with self.assertRaises(ValueError):
+            ds.fetch_targets(["no-equals"])
+        with self.assertRaises(ValueError):
+            ds.fetch_targets(["A=ftp://x"])
+
+    def test_resolve_names(self):
+        with tempfile.TemporaryDirectory() as d:
+            for f in ("B.pdf", "B.txt", "A.txt", ".hidden.txt", "manifest.json"):
+                open(os.path.join(d, f), "w").close()
+            self.assertEqual(ds.resolve_names("all", d), ["A", "B"])
+            self.assertEqual(ds.resolve_names("A, B", d), ["A", "B"])
+            empty = os.path.join(d, "empty")
+            os.makedirs(empty)
+            with self.assertRaises(FileNotFoundError):
+                ds.resolve_names("all", empty)
+
+    def test_grep_all_skips_unreadable_and_labels_hits(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "X.txt"), "w").write(TEXT)
+            open(os.path.join(d, "Y.txt"), "w").write("Electrical Characteristics\nVIH EN high 1.1 V\n")
+            open(os.path.join(d, "BAD.pdf"), "wb").write(b"not a pdf")
+            out, err = io.StringIO(), io.StringIO()
+            with contextlib.redirect_stdout(out), contextlib.redirect_stderr(err):
+                code = ds.main(["--dir", d, "grep", "all", "EN high"])
+            self.assertEqual(code, 0)
+            self.assertIn("--- X page 4", out.getvalue())
+            self.assertIn("--- Y page 1", out.getvalue())
+            self.assertIn("BAD: skipped", err.getvalue())
+
+    def test_fetch_reports_each_failure(self):
+        with tempfile.TemporaryDirectory() as d:
+            def fail(url, dest):
+                raise RuntimeError(f"{url} did not return a PDF")
+            original = ds.download
+            ds.download = fail
+            try:
+                err = io.StringIO()
+                with contextlib.redirect_stderr(err), contextlib.redirect_stdout(io.StringIO()):
+                    code = ds.main(["--dir", d, "fetch", "A=https://x/a", "B=https://x/b"])
+            finally:
+                ds.download = original
+            self.assertEqual(code, 1)
+            self.assertIn("A: failed", err.getvalue())
+            self.assertIn("B: failed", err.getvalue())
+
+
 def _pdf(text):
     """Build a one-page PDF containing `text` (Helvetica), with a correct xref table."""
     stream = f"BT /F1 12 Tf 20 100 Td ({text}) Tj ET".encode()

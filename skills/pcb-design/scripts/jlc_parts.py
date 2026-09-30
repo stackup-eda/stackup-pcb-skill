@@ -8,6 +8,7 @@ Results are sorted by tier (Basic, then Preferred Extended, then Extended) and t
     python3 jlc_parts.py AO3401A --exact         # only listings whose model is exactly AO3401A
     python3 jlc_parts.py "100nF 0402" --basic    # Basic-library parts only
     python3 jlc_parts.py C15127 --json           # machine-readable
+    python3 jlc_parts.py AO3400A AO3401A TLV62569DBVR --exact --best   # many parts, one line each
 
 Stock numbers change daily. Quote them with the date checked. The search is keyword-based and
 returns a limited window (--page-size), so re-check each hit's value/package/MPN, and widen the
@@ -19,6 +20,7 @@ import argparse
 import json
 import re
 import sys
+import time
 import urllib.error
 import urllib.request
 
@@ -102,25 +104,69 @@ def format_table(parts):
     return "\n".join([header, *rows])
 
 
+def format_best(results):
+    """One line per query: the best listing, or why there is none."""
+    header = f"{'Query':22} {'LCSC':10} {'Tier':19} {'Stock':>9}  {'Package':14} MPN / manufacturer"
+    rows = []
+    for query, parts, error in results:
+        if error:
+            rows.append(f"{query[:22]:22} lookup failed: {error}")
+        elif not parts:
+            rows.append(f"{query[:22]:22} no matching listings")
+        else:
+            p = parts[0]
+            more = f" (+{len(parts) - 1} more)" if len(parts) > 1 else ""
+            rows.append(f"{query[:22]:22} {p['lcsc']:10} {p['tier']:19} {p['stock']:>9}  "
+                        f"{p['package'][:14]:14} {p['mpn']} / {p['manufacturer']}{more}")
+    return "\n".join([header, *rows])
+
+
+def lookup_all(queries, exact=False, basic_only=False, page_size=50, delay=0.3, search_fn=None):
+    """[(query, parts, error)] for each query, pausing `delay` seconds between requests."""
+    search_fn = search_fn or search
+    results = []
+    for i, query in enumerate(queries):
+        if i and delay:
+            time.sleep(delay)
+        try:
+            found = search_fn(query, page_size=page_size)
+            results.append((query, select(found, mpn=query if exact else None, basic_only=basic_only), ""))
+        except (urllib.error.URLError, TimeoutError, RuntimeError) as e:
+            results.append((query, [], str(e)))
+    return results
+
+
 def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
-    parser.add_argument("keyword", help="MPN, LCSC number, or search words (e.g. '100nF 0402')")
+    parser.add_argument("keywords", nargs="+", metavar="keyword",
+                        help="MPN, LCSC number, or search words (e.g. '100nF 0402'); several allowed")
     parser.add_argument("--exact", action="store_true", help="keep only exact MPN matches")
     parser.add_argument("--basic", action="store_true", help="keep only Basic-library parts")
+    parser.add_argument("--best", action="store_true", help="one line per keyword: the best listing")
     parser.add_argument("--json", action="store_true", help="print JSON instead of a table")
     parser.add_argument("--page-size", type=int, default=50,
                         help="how many search results to fetch (default %(default)s)")
+    parser.add_argument("--delay", type=float, default=0.3,
+                        help="seconds between requests when looking up several parts")
     args = parser.parse_args(argv)
 
-    try:
-        found = search(args.keyword, page_size=args.page_size)
-    except (urllib.error.URLError, TimeoutError, RuntimeError) as e:
-        print(f"lookup failed: {e}", file=sys.stderr)
-        return 1
-    parts = select(found, mpn=args.keyword if args.exact else None, basic_only=args.basic)
-    print(json.dumps(parts, indent=2) if args.json else format_table(parts))
-    return 0
+    results = lookup_all(args.keywords, exact=args.exact, basic_only=args.basic,
+                         page_size=args.page_size, delay=args.delay)
+    failed = [q for q, _, error in results if error]
+    if args.json:
+        data = {q: ({"error": error} if error else parts) for q, parts, error in results}
+        print(json.dumps(data if len(results) > 1 else next(iter(data.values())), indent=2))
+    elif args.best:
+        print(format_best(results))
+    else:
+        for query, parts, error in results:
+            if len(results) > 1:
+                print(f"== {query}")
+            print(f"lookup failed: {error}" if error else format_table(parts))
+    if failed and not (args.best or args.json):
+        print("lookup failed for: " + ", ".join(failed), file=sys.stderr)
+    return 1 if failed else 0
 
 
 if __name__ == "__main__":
