@@ -49,7 +49,10 @@ library stackup path="../stackup-library"
 
 `--locked` ignores that local override; CI always uses `--locked`.
 
-Pin the CLI with a tiny Cargo project so the version is locked:
+Pin the CLI with a tiny Cargo project so the version is locked. The skill currently targets
+Stackup at commit `1acb9ba` on `main`, which adds MPN declarations with placement matching and
+fixes `place` declaration order; the latest crates.io release (0.1.3) has neither. Move the pin to a
+release once one includes them:
 
 ```toml
 # ci/stackup/Cargo.toml
@@ -60,7 +63,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-stackup = { package = "stackup-eda", version = "=0.1.3" }
+stackup = { package = "stackup-eda", git = "https://github.com/stackup-eda/stackup", rev = "1acb9ba" }
 ```
 
 ```rust
@@ -71,25 +74,25 @@ fn main() {
 ```
 
 Run it with `cargo run --locked --manifest-path ci/stackup/Cargo.toml -- check PCB/stackup/board.kdl --locked`.
-For daily use, `cargo install stackup-eda` (or `cargo install --path crates/stackup` from a
-checkout) puts `stackup` on `PATH`. Check that the installed version matches the pin.
+For daily use, install the same commit so `stackup` on `PATH` matches the pin:
+
+```sh
+cargo install --git https://github.com/stackup-eda/stackup --rev 1acb9ba stackup-eda --locked
+```
 
 ## 2. CLI
 
-Run `stackup --help` for the pinned version's exact set. `check`, `bom` and `netlist` are known to
-work at 0.1.3; `pin`, `import` and `check --symbols` come from the library README and may not exist
-in every version. The main commands:
+The pinned CLI has `check`, `tree`, `netlist`, `bom` and `update`; run `stackup` with no
+arguments for its usage line. (The library README also mentions `pin`, `import` and
+`check --symbols`; the pinned CLI doesn't have them.)
 
 | Command | Purpose |
 |---|---|
 | `stackup check <board.kdl> [--locked]` | Elaborate and report every finding at once |
 | `stackup tree <board.kdl>` | Instances and nets, for reading |
 | `stackup netlist <board.kdl> [-o file]` | KiCad netlist (the plugin calls this) |
-| `stackup bom <board.kdl> --locked [-o file.csv]` | Purchasing BOM with manufacturer, MPN and distributor columns |
+| `stackup bom <board.kdl> --locked [-o file.csv]` | Purchasing BOM with manufacturer, MPN and distributor columns; reports each part with no MPN and exits 1, but still writes the CSV |
 | `stackup update [@lib]` | Move a library pin to its current head |
-| `stackup pin @lib` / `stackup pin --check` | Pin to a pushed local checkout / verify the pin |
-| `stackup import Lib:SYMBOL` | Generate a pin table from a KiCad symbol (verify it against the datasheet) |
-| `stackup check --symbols` | Compare parts with KiCad symbols and footprints |
 
 `--design NAME` selects one design when a file has several.
 
@@ -127,8 +130,9 @@ design example {
 
 Key ideas (SPEC sections in brackets):
 
-- **Order carries no meaning**, with one exception in 0.1.3: a port argument on `place`
-  (`vcc=V5.out`) can only name a placement declared above it (see Gotchas).
+- **Order carries no meaning.** A statement, including a port argument on `place`
+  (`vcc=V5.out`), may name a placement declared later. (Before `b98481c`, port arguments couldn't;
+  see stackup-eda/stackup#1.)
 - **Facts stay on their net.** A voltage stated on the battery net doesn't pass through a switch or
   series part, so `set … net.voltage` goes on the net whose requirement should read it.
 - **Shunt blocks** (`pull-up`, `pull-down`, `decouple`) connect through `.node` and their return
@@ -166,13 +170,11 @@ Key ideas (SPEC sections in brackets):
   block's parameters with defaults, from the library pinned in `manifest.kdl` (run `stackup check`
   once first so it's in the cache). Library parts carry pin requirements, strap roles and default
   support blocks (decoupling, pulls).
-- **Library blocks can't carry MPNs for the parts they place** (issue
-  [#2](https://github.com/stackup-eda/stackup/issues/2)): `tlv62569-buck`'s inductor, capacitors and
-  divider reach the BOM with no manufacturer, MPN or LCSC, and no board statement can add them.
-  Until that's fixed, when a board needs a complete BOM: copy the block into `parts.kdl` under a
-  local name and add `manufacturer=`/`mpn=`/`lcsc=` to each child placement; for a part's default
-  support blocks, turn them off with `without` and place the equivalent parts yourself. Keep the
-  library block's comments and asserts, and note the issue in a comment so it can be undone.
+- **Give every placed part an MPN, including the parts inside library blocks,** with `mpn`
+  declarations and `match placement` rules (SPEC §6.6; see [bom-and-fab.md](bom-and-fab.md)). A
+  board rule reaches a block's children (`tlv62569-buck`'s inductor, capacitors and divider), so
+  there's no need to copy blocks into the project or turn off default support blocks to add
+  purchasing details. `stackup bom` names every part still without one.
 - Turn off a default support block with `{ without <feature> }` only when the board provides that
   function another way, and say which way in a comment.
 - `ignore "<fact>" reason="…"` suppresses a specific check. Use it only with a real reason that can
@@ -214,10 +216,6 @@ gate or that a transient lifts a latch.
 
 ## 7. Gotchas
 
-- **Declaration order for port arguments** (issue
-  [#1](https://github.com/stackup-eda/stackup/issues/1)): `place block x vcc=V5.out` fails with
-  "`V5` is not a name in scope" if `place power-jack V5` comes later. Place suppliers before the
-  blocks whose port arguments name them. `circuit` statements are not affected.
 - `stackup check` downloads the pinned library into `.stackup/cache/` beside the manifest: add
   `.stackup/` to `.gitignore`.
 - `stackup update` rewrites the manifest's pinned commit to the library's head. Don't run it just to

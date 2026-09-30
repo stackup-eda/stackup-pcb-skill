@@ -102,6 +102,26 @@ class MainTests(unittest.TestCase):
         self.assertIn("error", err)
 
 
+class StackupBomTests(unittest.TestCase):
+    def fake_stackup(self, d, code, stdout):
+        path = os.path.join(d, "stackup")
+        with open(path, "w") as f:
+            f.write(f"#!/bin/sh\nprintf '%s' '{stdout}'\necho 'error: `J1` has no MPN for the BOM' >&2\nexit {code}\n")
+        os.chmod(path, 0o755)
+        return path
+
+    def test_exit_1_with_csv_still_returns_the_csv(self):
+        with tempfile.TemporaryDirectory() as d:
+            binary = self.fake_stackup(d, 1, HEADER.strip() + "\\n")
+            self.assertTrue(b.stackup_bom(os.path.join(d, "board.kdl"), binary=binary).startswith("Refs,"))
+
+    def test_exit_1_without_csv_raises(self):
+        with tempfile.TemporaryDirectory() as d:
+            binary = self.fake_stackup(d, 1, "")
+            with self.assertRaises(RuntimeError):
+                b.stackup_bom(os.path.join(d, "board.kdl"), binary=binary)
+
+
 @contextlib.contextmanager
 def mock_env(key, value):
     old = os.environ.get(key)
