@@ -1,0 +1,50 @@
+// Soft power latch for a handheld on a single Li-ion cell, with its ESP32-S3 module.
+// VSYS comes from a charger's power path: ~3.0-4.2 V on battery, up to ~4.5 V on USB.
+// A momentary button (SW_PWR1) turns the buck on; the MCU then holds it on through PWR_HOLD
+// (U_MCU1.IO21) and reads PWR_BTN_SENSE (U_MCU1.IO2) to detect a long press for shutdown.
+// 3V3 is the buck output (the buck's inductor and feedback divider are on another sheet).
+use "@stackup/discrete/bjt/mmbt3904"
+use "@stackup/discrete/diode/bat54w"
+use "@stackup/discrete/diode/diode"
+use "@stackup/discrete/fet/ao3400a"
+use "@stackup/discrete/fet/ao3401a"
+use "@stackup/micro/esp32s3"
+use "@stackup/passives"
+use "@stackup/power/buck/tlv62569"
+use "@stackup/switch/push-button"
+
+design latch {
+    stock { packages imperial="0402" }
+
+    place push-button "SW_PWR1" footprint="Button_Switch_SMD:SW_Push_1P1T-MP_NO_Horizontal_Alps_SKRTLAE010" manufacturer="Alps Alpine" mpn="SKRTLAE010" lcsc="C110293" package="alps" value="SKRTLAE010"
+    place resistor "R_BTN_PU1" footprint="Resistor_SMD:R_0402_1005Metric" manufacturer="UNI-ROYAL(Uniroyal Elec)" mpn="0402WGF1003TCE" lcsc="C25741" value="100kΩ"
+    place capacitor "C_DBNC1" footprint="Capacitor_SMD:C_0402_1005Metric" manufacturer="Samsung Electro-Mechanics" mpn="CL05B104KO5NNNC" lcsc="C1525" value="100nF"
+    place resistor "R_INV_BASE1" footprint="Resistor_SMD:R_0402_1005Metric" manufacturer="UNI-ROYAL(Uniroyal Elec)" mpn="0402WGF1003TCE" lcsc="C25741" value="100kΩ"
+    place bat54w "D_INV_ISO1" footprint="Package_TO_SOT_SMD:SOT-323_SC-70" manufacturer="Diodes Incorporated" mpn="BAT54W-7-F" lcsc="C134417" value="BAT54W-7-F"
+    place mmbt3904 "Q_INV1" footprint="Package_TO_SOT_SMD:SOT-23" manufacturer="Jiangsu Changjing Electronics Technology Co., Ltd." mpn="MMBT3904(RANGE:100-300)" lcsc="C20526" value="MMBT3904"
+    place resistor "R_INV_PU1" footprint="Resistor_SMD:R_0402_1005Metric" manufacturer="UNI-ROYAL(Uniroyal Elec)" mpn="0402WGF1003TCE" lcsc="C25741" value="100kΩ"
+    place diode "D_OR1" footprint="Diode_SMD:D_SOD-123" manufacturer="ST(Semtech)" mpn="1N4148W" lcsc="C81598" value="1N4148W"
+    place diode "D_OR2" footprint="Diode_SMD:D_SOD-123" manufacturer="ST(Semtech)" mpn="1N4148W" lcsc="C81598" value="1N4148W"
+    place resistor "R_LATCH_G1" footprint="Resistor_SMD:R_0402_1005Metric" manufacturer="UNI-ROYAL(Uniroyal Elec)" mpn="0402WGF1002TCE" lcsc="C25744" value="10kΩ"
+    place capacitor "C_LATCH_G1" footprint="Capacitor_SMD:C_0402_1005Metric" manufacturer="Samsung Electro-Mechanics" mpn="CL05B104KO5NNNC" lcsc="C1525" value="100nF"
+    place nfet-ao3400a "Q_LATCH1" footprint="Package_TO_SOT_SMD:SOT-23" manufacturer="Alpha & Omega Semicon" mpn="AO3400A" lcsc="C20917" value="AO3400A"
+    place resistor "R_GATE1" footprint="Resistor_SMD:R_0402_1005Metric" manufacturer="UNI-ROYAL(Uniroyal Elec)" mpn="0402WGF1003TCE" lcsc="C25741" value="100kΩ"
+    place ao3401a "Q_PWR1" footprint="Package_TO_SOT_SMD:SOT-23" manufacturer="Alpha & Omega Semicon" mpn="AO3401A" lcsc="C15127" value="AO3401A"
+    place tlv62569 "U_BUCK1" footprint="Package_TO_SOT_SMD:SOT-23-5" manufacturer="Texas Instruments" mpn="TLV62569DBVR" lcsc="C141836" value="TLV62569DBVR"
+    place esp32-s3-wroom-1 "U_MCU1" package=n8 footprint="Espressif:ESP32-S3-WROOM-1" manufacturer="Espressif Systems" mpn="ESP32-S3-WROOM-1-N8" lcsc="C2913198" value="ESP32-S3-WROOM-1-N8"
+
+    circuit "C_DBNC1.A" "D_INV_ISO1.K" "R_BTN_PU1.B" "SW_PWR1.1" "U_MCU1.IO2" name="PWR_BTN_SENSE"
+    circuit "D_INV_ISO1.A" "Q_INV1.BASE" "R_INV_BASE1.B" name="PWR_BTN_INV_BASE"
+    circuit "D_OR1.A" "Q_INV1.COLLECTOR" "R_INV_PU1.B" name="PWR_BTN_TRIGGER"
+    circuit "C_LATCH_G1.B" "D_OR1.K" "D_OR2.K" "Q_LATCH1.GATE" "R_LATCH_G1.B" name="PWR_LATCH_G"
+    circuit "Q_LATCH1.DRAIN" "Q_PWR1.GATE" "R_GATE1.B" name="PWR_GATE"
+    circuit "Q_PWR1.DRAIN" "U_BUCK1.EN" name="PWR_EN"
+    circuit "Q_PWR1.SOURCE" "R_GATE1.A" "R_INV_BASE1.A" "R_INV_PU1.A" "R_BTN_PU1.A" "U_BUCK1.VIN" name="VSYS"
+    set "U_BUCK1.VIN" net.voltage min="3.0V" max="4.5V"
+    circuit "U_MCU1.3V3" name="3V3"
+    set "U_MCU1.3V3" net.voltage "3.3V" tolerance="3%"   // the buck output, set on the buck sheet
+    circuit "D_OR2.A" "U_MCU1.IO21" name="PWR_HOLD"
+    circuit "C_DBNC1.B" "C_LATCH_G1.A" "Q_INV1.EMITTER" "Q_LATCH1.SOURCE" "R_LATCH_G1.A" "SW_PWR1.2" "U_BUCK1.GND" "U_MCU1.GND" name="GND"
+    nc "U_BUCK1.SW" "U_BUCK1.FB" note="inductor and feedback divider are on the buck sheet"
+    nc "D_INV_ISO1.NC"
+}

@@ -1,0 +1,31 @@
+// Battery input and 3.3 V buck for a small sensor board, to be assembled by JLCPCB.
+// J1 is a right-angle JST PH battery connector; D1 is a Schottky for the MCU's battery-sense tap.
+use "@stackup/passives"
+use "@stackup/connector/jst-ph"
+use "@stackup/discrete/diode/bat54w"
+use "@stackup/discrete/fet/ao3401a"
+use "@stackup/power/buck/tlv62569"
+
+design sensor_power {
+    stock { packages imperial="0402" }
+
+    place jst-ph-2 "J1" footprint="Connector_JST:JST_PH_S2B-PH-K_1x02_P2.00mm_Horizontal" \
+        manufacturer="JST" mpn="S2B-PH-K(LF)(SN)" lcsc="C265016" value="JST PH 2-pin"
+    place ao3401a "Q1" footprint="Package_TO_SOT_SMD:SOT-23" manufacturer="Alpha & Omega Semicon" \
+        mpn="AO3401A" lcsc="C15127" value="P-FET, 30V"
+    place tlv62569 "U1" footprint="Package_TO_SOT_SMD:SOT-23-5" manufacturer="Texas Instruments" \
+        mpn="TLV62569DBVR" lcsc="C141836" value="TLV62569DBVR"
+    place pull-down "R1" footprint="Resistor_SMD:R_0402_1005Metric" manufacturer="Yageo" \
+        mpn="RC0402FR-07100KL" value="100kΩ"
+    place capacitor "C1" footprint="Capacitor_SMD:C_0402_1005Metric" value="100nF"
+    place bat54w "D1" footprint="Diode_SMD:D_SOD-123" value="BAT54W"
+
+    circuit "J1.1" "Q1.DRAIN" name="VBAT_IN"
+    circuit "Q1.SOURCE" "U1.VIN" "C1.A" "D1.A" name="VBAT"
+    set "U1.VIN" net.voltage min="3.0V" max="4.2V"
+    circuit "R1.node" "U1.EN" name="BUCK_EN"   // R1 holds the buck off until the MCU enables it
+    circuit "D1.K" name="VBAT_SENSE"
+    circuit "J1.2" "Q1.GATE" "R1.rail.gnd" "U1.GND" "C1.B" name="GND"
+    nc "U1.SW" "U1.FB" note="inductor and feedback divider are on the buck sheet"
+    nc "D1.NC"
+}
