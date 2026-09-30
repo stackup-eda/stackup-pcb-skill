@@ -29,7 +29,7 @@ files it needs, a description of a good result, and pass/fail assertions for gra
 - **footprint-check:** D1 is an SK6812MINI-E on a 5 × 5 mm PLCC4 footprint; D2 is a BAT54W-7-F
   (SOT-323) on a 2-pad SOD-123 footprint. Q1 and R1 are correct.
 - **bom-export:** `bom_check.py` finds R1's missing LCSC, C1's missing part and Q1's comma
-  (`stackup bom` at the pinned commit also reports C1's missing MPN and exits 1). It
+  (`stackup bom` in 0.2.0 also reports C1's missing MPN and exits 1). It
   can't see that D1's library-default MPN (BAT54W-7-F, SOT-323) disagrees with its SOD-123
   footprint, or that J1's value doesn't say right-angle. The circuit itself is meant to be sound:
   R1 pulls the buck's EN up to VBAT (always on), and VBAT_SENSE goes to a divider on another sheet.
@@ -55,7 +55,7 @@ You are running one test case for a skill evaluation.
 [Skill to use: read <repo>/skills/pcb-design/SKILL.md first and follow it.]
 Task (from the user): "<prompt>"
 [The user's design: copy <fixture files> into outputs/design/ and work on that copy.]
-Environment: Stackup CLI at ~/.cargo/bin/stackup, built from commit 1acb9ba (the pin in
+Environment: Stackup CLI at ~/.cargo/bin/stackup, version 0.2.0 (the pin in
 references/stackup.md); KiCad with libngspice; network access.
 Rules:
 - Write every file ONLY inside <outputs>/. Put temporary files in <outputs>/scratch/. Do not use

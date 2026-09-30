@@ -32,7 +32,7 @@ names exactly one body, and a description on every part.
 
 ## In Stackup
 
-This assumes Stackup at the commit pinned in [stackup.md](stackup.md) (`1acb9ba` or later), which
+This assumes Stackup 0.2.0 or later (pinned in [stackup.md](stackup.md)), which
 has MPN declarations and placement matching. 0.1.3 from crates.io has neither.
 
 **Declare each orderable part once, then select it.** An `mpn` declaration is the whole purchasing

@@ -49,10 +49,9 @@ library stackup path="../stackup-library"
 
 `--locked` ignores that local override; CI always uses `--locked`.
 
-Pin the CLI with a tiny Cargo project so the version is locked. The skill currently targets
-Stackup at commit `1acb9ba` on `main`, which adds MPN declarations with placement matching and
-fixes `place` declaration order; the latest crates.io release (0.1.3) has neither. Move the pin to a
-release once one includes them:
+Pin the CLI with a tiny Cargo project so the version is locked. The skill targets
+Stackup 0.2.0 (or later), which adds MPN declarations with placement matching and
+fixes `place` declaration order:
 
 ```toml
 # ci/stackup/Cargo.toml
@@ -63,7 +62,7 @@ edition = "2024"
 publish = false
 
 [dependencies]
-stackup = { package = "stackup-eda", git = "https://github.com/stackup-eda/stackup", rev = "1acb9ba" }
+stackup = { package = "stackup-eda", version = "0.2.0" }
 ```
 
 ```rust
@@ -74,10 +73,10 @@ fn main() {
 ```
 
 Run it with `cargo run --locked --manifest-path ci/stackup/Cargo.toml -- check PCB/stackup/board.kdl --locked`.
-For daily use, install the same commit so `stackup` on `PATH` matches the pin:
+For daily use, install the same version so `stackup` on `PATH` matches the pin:
 
 ```sh
-cargo install --git https://github.com/stackup-eda/stackup --rev 1acb9ba stackup-eda --locked
+cargo install stackup-eda --version 0.2.0 --locked
 ```
 
 ## 2. CLI
@@ -131,7 +130,7 @@ design example {
 Key ideas (SPEC sections in brackets):
 
 - **Order carries no meaning.** A statement, including a port argument on `place`
-  (`vcc=V5.out`), may name a placement declared later. (Before `b98481c`, port arguments couldn't;
+  (`vcc=V5.out`), may name a placement declared later. (Before 0.2.0, port arguments couldn't;
   see stackup-eda/stackup#1.)
 - **Facts stay on their net.** A voltage stated on the battery net doesn't pass through a switch or
   series part, so `set … net.voltage` goes on the net whose requirement should read it.
@@ -170,6 +169,10 @@ Key ideas (SPEC sections in brackets):
   block's parameters with defaults, from the library pinned in `manifest.kdl` (run `stackup check`
   once first so it's in the cache). Library parts carry pin requirements, strap roles and default
   support blocks (decoupling, pulls).
+- **Designators for a block's parts:** a reusable part or block can expose its children's
+  designators as text parameters (`param ref-R text default=#null`, then
+  `place resistor R designator=ref-R`), so a board can pass `ref-R="R17"` to keep existing
+  designators. Automatic numbering skips explicitly assigned ones (0.2.0).
 - **Give every placed part an MPN, including the parts inside library blocks,** with `mpn`
   declarations and `match placement` rules (SPEC §6.6; see [bom-and-fab.md](bom-and-fab.md)). A
   board rule reaches a block's children (`tlv62569-buck`'s inductor, capacitors and divider), so
