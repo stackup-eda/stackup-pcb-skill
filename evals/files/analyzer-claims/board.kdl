@@ -13,8 +13,48 @@ use "@stackup/passives"
 use "@stackup/power/buck/tlv62569"
 use "@stackup/switch/push-button"
 
+// Purchasing choices for the parts the ESP32-S3 module block places itself (decoupling, the EN RC
+// and the boot pull-up); the match rules below select them.
+mpn "CL05B104KO5NNNC" manufacturer="Samsung Electro-Mechanics" kind=capacitor value="100nF" \
+    footprint="Capacitor_SMD:C_0402_1005Metric" rated_voltage="16V" {
+    catalog lcsc="C1525"
+}
+mpn "CL05A105KA5NQNC" manufacturer="Samsung Electro-Mechanics" kind=capacitor value="1µF" \
+    footprint="Capacitor_SMD:C_0402_1005Metric" rated_voltage="25V" {
+    catalog lcsc="C52923"
+}
+mpn "CL10A106KP8NNNC" manufacturer="Samsung Electro-Mechanics" kind=capacitor value="10µF" \
+    footprint="C_0603_1608Metric" rated_voltage="10V" {
+    catalog lcsc="C19702"
+}
+mpn "0402WGF1002TCE" manufacturer="UNI-ROYAL(Uniroyal Elec)" kind=resistor value="10kΩ" \
+    footprint="Resistor_SMD:R_0402_1005Metric" {
+    catalog lcsc="C25744"
+}
+
 design latch {
     stock { packages imperial="0402" }
+    match placement {
+        when kind=capacitor
+        when value="100nF"
+        set mpn="CL05B104KO5NNNC"
+    }
+    match placement {
+        when kind=capacitor
+        when value="1µF"
+        set mpn="CL05A105KA5NQNC"
+    }
+    match placement {
+        when kind=capacitor
+        when value="10µF"
+        set mpn="CL10A106KP8NNNC"
+    }
+    match placement {
+        when kind=resistor
+        when intent=pull-up
+        when value="10kΩ"
+        set mpn="0402WGF1002TCE"
+    }
 
     place push-button "SW_PWR1" footprint="Button_Switch_SMD:SW_Push_1P1T-MP_NO_Horizontal_Alps_SKRTLAE010" manufacturer="Alps Alpine" mpn="SKRTLAE010" lcsc="C110293" package="alps" value="SKRTLAE010"
     place resistor "R_BTN_PU1" footprint="Resistor_SMD:R_0402_1005Metric" manufacturer="UNI-ROYAL(Uniroyal Elec)" mpn="0402WGF1003TCE" lcsc="C25741" value="100kΩ"
@@ -46,6 +86,7 @@ design latch {
     set "U_MCU1.3V3" net.voltage "3.3V" tolerance="3%"   // the buck output, set on the buck sheet
     circuit "D_OR2.A" "U_MCU1.IO21" name="PWR_HOLD"
     circuit "C_DBNC1.B" "C_LATCH_G1.A" "Q_INV1.EMITTER" "Q_LATCH1.SOURCE" "R_LATCH_G1.A" "R_PWR_EN_PD1.rail.gnd" "SW_PWR1.2" "U_BUCK1.GND" "U_MCU1.GND" name="GND"
-    nc "U_BUCK1.SW" "U_BUCK1.FB" note="inductor and feedback divider are on the buck sheet"
+    circuit "U_BUCK1.SW" name="BUCK_SW"   // to the inductor on the buck sheet
+    circuit "U_BUCK1.FB" name="BUCK_FB"   // to the feedback divider on the buck sheet
     nc "D_INV_ISO1.NC"
 }

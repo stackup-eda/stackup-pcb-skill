@@ -137,8 +137,9 @@ alternatives (pass every MPN in one call with `--exact --best`), and have a huma
 
 ## Assembly errors happen even with a correct BOM
 
-An assembler can mount a correct part wrongly: a right-angle connector has been fitted vertically
-from a BOM that correctly specified the right-angle part. To make this less likely and catch it:
+An assembler can mount a correct part wrongly: on some board, a right-angle connector was fitted
+vertically from a BOM that correctly specified the right-angle part (a general lesson, not a fact
+about the board in front of you). To make this less likely and catch it:
 - put orientation and variant in the description and value (`RIGHT-ANGLE HORIZONTAL`), not only in
   the MPN;
 - review the assembler's placement preview and answer their engineering queries carefully, since

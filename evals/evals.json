@@ -8,7 +8,7 @@
       "files": [],
       "assertions": [
         "Shows node voltages for the latch/EN/sense nodes at the low end (3.0 V) and high end (4.2 or 4.5 V) of the supply",
-        "Checks the latch FET against its maximum (worst-case) Vgs(th), not typical",
+        "Checks each switching threshold in the latch against its worst-case datasheet limit, not typical: the maximum Vgs(th) of any latch FET, or the buck EN's VIH/VIL when EN itself is the latch",
         "Gives the buck EN pin a defined rest state (explicit pull-down or equivalent) when the switch is off",
         "Keeps the button-sense GPIO within the ESP32-S3's 3.3 V rail in every supply state (no pull-up to VSYS/battery)",
         "Chooses ESP32-S3 GPIOs that avoid strapping, flash/PSRAM and USB pins, or explicitly justifies any exception",
@@ -36,7 +36,8 @@
         "Names at least one second source or alternative part",
         "Updates the placement with manufacturer, MPN and LCSC fields",
         "Ran stackup check on the edited design and it reports 0 errors",
-        "Tells the user the follow-up steps: sync the PCB and re-run the latch simulation"
+        "Tells the user to sync the PCB from Stackup after the swap",
+        "Re-runs the latch simulation with the new part, or tells the user to"
       ]
     },
     {
@@ -144,7 +145,8 @@
         "Proposes correct footprints, noting the reverse-mount LED needs a board cutout",
         "Leaves the original board file unmodified unless it says what it changed",
         "Checks pad numbering and pin 1 for the reverse-mount LED, which is mirrored relative to a top-mount footprint",
-        "Notes the reverse-mount LED's board cutout and its clearance to the pads (a DRC or fab rule impact)"
+        "Reports the reverse-mount footprint's Edge.Cuts cutout and its smallest gap to the pads (about 0.25 mm, at the cutout's corner-relief arcs; 0.35 mm along its straight sides), compared with the fab's minimum copper-to-edge clearance",
+        "Identifies each part from the footprints' Value, MF and Manufacturer_Part_Number fields rather than reporting the fields missing"
       ]
     },
     {
@@ -179,7 +181,7 @@
         "Answers yes and gives the RC time constant (about 10 ms)",
         "Cites Espressif's datasheet or hardware design guidelines for the EN (CHIP_PU) RC",
         "Explains why the delay matters (EN must rise after the supply is stable)",
-        "Writes no files besides response.md",
+        "Writes no design or deliverable files besides response.md (fetched datasheets and scratch files are fine)",
         "Stays short: under about 300 words and at most 8 tool calls",
         "Takes the EN timing requirement from Espressif's document it actually opened (or states it's from memory), citing the table"
       ]
@@ -194,7 +196,7 @@
         "evals/files/latch/manifest.kdl"
       ],
       "assertions": [
-        "Looks up candidates' JLCPCB tier and stock, several parts per call",
+        "Looks up the candidates' JLCPCB tier and stock in batched calls, several MPNs per jlc_parts.py call (graded from the transcript)",
         "Confirms the candidate's SOT-23 pinout (G1 S2 D3) from the manufacturer's drawing",
         "Checks the candidate against the circuit: |Vgs(th)| max below the gate drive at VSYS 3.0 V, Rds(on) specified at |Vgs| of 2.5 V or less, and Vds rating well above 4.5 V",
         "Checks the off state (R_GATE1 holds the gate at VSYS) against the candidate's leakage",
