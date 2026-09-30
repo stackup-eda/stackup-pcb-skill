@@ -14,8 +14,11 @@ land pattern).
 
 NAME may be one name, a comma-separated list, or "all" for every datasheet in the folder.
 
-Files live in --dir (default PCB/datasheets): <name>.pdf, <name>.txt (pages split by form feeds),
-and manifest.json with the source URL, date and SHA-256, so a later review reads the same revision.
+Files live in --dir (default PCB/datasheets; before or after the command): <name>.pdf, <name>.txt
+(pages split by form feeds), and manifest.json with the source URL, date and SHA-256, so a later
+review reads the same revision. A URL that returns an HTML document (a vendor's online hardware
+design guide, a manual page) is saved as <name>.html and its text as <name>.txt, one page, and
+searched the same way; check it isn't a product or landing page that links to the real PDF.
 Needs poppler's pdftotext/pdftoppm (macOS: brew install poppler; Debian: apt install poppler-utils).
 """
 from __future__ import annotations
@@ -23,6 +26,7 @@ from __future__ import annotations
 import argparse
 import datetime
 import hashlib
+import html
 import json
 import os
 import re
@@ -30,6 +34,7 @@ import shutil
 import subprocess
 import sys
 import urllib.request
+from html.parser import HTMLParser
 
 DEFAULT_DIR = "PCB/datasheets"
 USER_AGENT = "Mozilla/5.0 (compatible; pcb-design-skill/1.0)"
@@ -51,6 +56,50 @@ SECTIONS = {
 def paths(name, directory):
     base = os.path.join(directory, name)
     return base + ".pdf", base + ".txt", os.path.join(directory, "manifest.json")
+
+
+class _TextExtractor(HTMLParser):
+    """Visible text of an HTML page, one line per block element; scripts, styles and navigation
+    are dropped."""
+    SKIP = {"script", "style", "noscript", "nav", "header", "footer", "svg", "head"}
+    BLOCK = {"p", "div", "br", "li", "tr", "h1", "h2", "h3", "h4", "h5", "h6", "table", "section",
+             "article", "pre", "dt", "dd", "caption", "blockquote"}
+
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts, self.skipping = [], 0
+
+    def handle_starttag(self, tag, attrs):
+        if tag in self.SKIP:
+            self.skipping += 1
+        elif tag in self.BLOCK:
+            self.parts.append("\n")
+        elif tag in ("td", "th"):
+            self.parts.append("  ")
+
+    def handle_endtag(self, tag):
+        if tag in self.SKIP and self.skipping:
+            self.skipping -= 1
+        elif tag in self.BLOCK:
+            self.parts.append("\n")
+
+    def handle_data(self, data):
+        if not self.skipping:
+            self.parts.append(data)
+
+
+def html_to_text(body):
+    """Readable text from an HTML document: blank-line runs collapsed, spaces tidied."""
+    extractor = _TextExtractor()
+    extractor.feed(body)
+    lines = [re.sub(r"[ \t\xa0]+", " ", line).strip() for line in "".join(extractor.parts).splitlines()]
+    text = re.sub(r"\n{3,}", "\n\n", "\n".join(lines)).strip()
+    return html.unescape(text) + "\n"
+
+
+def looks_like_html(body):
+    head = body[:512].lstrip().lower()
+    return head.startswith((b"<!doctype html", b"<html")) or b"<html" in head
 
 
 def require(tool):
@@ -122,13 +171,23 @@ def update_manifest(manifest, name, url, pdf):
 
 
 def download(url, dest):
+    """Save the PDF at `url` to `dest` and return "pdf", or, for an HTML document, save the page
+    beside it as .html and its text as .txt and return "html"."""
     request = urllib.request.Request(url, headers={"User-Agent": USER_AGENT})
     with urllib.request.urlopen(request, timeout=60) as response:
         body = response.read()
-    if not body.startswith(b"%PDF"):
-        raise RuntimeError(f"{url} did not return a PDF (got {body[:40]!r}); find the direct PDF link")
-    with open(dest, "wb") as f:
-        f.write(body)
+    if body.startswith(b"%PDF"):
+        with open(dest, "wb") as f:
+            f.write(body)
+        return "pdf"
+    if looks_like_html(body):
+        base = os.path.splitext(dest)[0]
+        with open(base + ".html", "wb") as f:
+            f.write(body)
+        with open(base + ".txt", "w") as f:
+            f.write(html_to_text(body.decode("utf-8", errors="replace")))
+        return "html"
+    raise RuntimeError(f"{url} returned neither a PDF nor an HTML page (got {body[:40]!r})")
 
 
 def load_pages(name, directory):
@@ -178,7 +237,14 @@ def fetch_targets(items, name=None):
 
 def fetch_one(name, url, directory):
     pdf, txt, manifest = paths(name, directory)
-    download(url, pdf)
+    if download(url, pdf) == "html":
+        page = os.path.splitext(pdf)[0] + ".html"
+        entry = update_manifest(manifest, name, url, page)
+        with open(txt) as f:
+            words = len(f.read().split())
+        return [f"saved {page} and its text {txt} ({words} words, from an HTML page, not a PDF; "
+                f"if it is a product or landing page, find the direct PDF link); "
+                f"sha256 {entry['sha256'][:12]}"]
     extract_text(pdf, txt)
     entry = update_manifest(manifest, name, url, pdf)
     pages = load_pages(name, directory)
@@ -191,17 +257,21 @@ def main(argv=None):
     parser = argparse.ArgumentParser(description=__doc__,
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     parser.add_argument("--dir", default=DEFAULT_DIR, help=f"datasheet folder (default {DEFAULT_DIR})")
+    # --dir is accepted after the command too; SUPPRESS keeps the top-level value when it isn't.
+    common = argparse.ArgumentParser(add_help=False)
+    common.add_argument("--dir", default=argparse.SUPPRESS, help=argparse.SUPPRESS)
     sub = parser.add_subparsers(dest="command", required=True)
-    f = sub.add_parser("fetch", help="download a PDF, extract its text, record it in the manifest")
+    f = sub.add_parser("fetch", parents=[common],
+                       help="download a PDF (or HTML document), extract its text, record it in the manifest")
     f.add_argument("items", nargs="+", metavar="URL | NAME=URL")
     f.add_argument("--name", help="short file name for a single URL, e.g. the MPN")
-    s = sub.add_parser("sections", help="list the pages holding the usual datasheet sections")
+    s = sub.add_parser("sections", parents=[common], help="list the pages holding the usual datasheet sections")
     s.add_argument("name")
-    g = sub.add_parser("grep", help="print matching lines with page numbers")
+    g = sub.add_parser("grep", parents=[common], help="print matching lines with page numbers")
     g.add_argument("name")
     g.add_argument("pattern")
     g.add_argument("-C", "--context", type=int, default=0)
-    p = sub.add_parser("page", help="render one page to PNG (for drawings only)")
+    p = sub.add_parser("page", parents=[common], help="render one page to PNG (for drawings only)")
     p.add_argument("name")
     p.add_argument("number", type=int)
     p.add_argument("--dpi", type=int, default=90)
@@ -244,6 +314,8 @@ def main(argv=None):
         elif args.command == "page":
             require("pdftoppm")
             pdf, _, _ = paths(args.name, args.dir)
+            if not os.path.exists(pdf) and os.path.exists(os.path.splitext(pdf)[0] + ".html"):
+                raise RuntimeError(f"{args.name} was saved from an HTML page; grep its text instead")
             out = os.path.join(args.dir, f"{args.name}-p{args.number}")
             subprocess.run(["pdftoppm", "-png", "-r", str(args.dpi), "-f", str(args.number),
                             "-l", str(args.number), "-singlefile", pdf, out],

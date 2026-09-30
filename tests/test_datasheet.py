@@ -157,6 +157,91 @@ class BatchTests(unittest.TestCase):
             self.assertIn("B: failed", err.getvalue())
 
 
+GUIDE_HTML = b"""<!DOCTYPE html><html><head><title>Guide</title><style>p {color: red}</style>
+<script>var x = "RC delay in a script";</script></head>
+<body><nav>Home | Next</nav><h2>Chip Power-up and Reset Timing</h2>
+<p>The recommended setting for the RC delay circuit is usually R = 10&nbsp;k&Omega; and C = 1 &mu;F.</p>
+<table><tr><th>Parameter</th><th>Min</th></tr><tr><td>t<sub>STBL</sub></td><td>50 &mu;s</td></tr></table>
+</body></html>"""
+
+
+class _Response(io.BytesIO):
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        return False
+
+
+def _serve(body):
+    """Stand-in for urllib.request.urlopen that returns `body`."""
+    return lambda request, timeout=None: _Response(body)
+
+
+class HtmlTests(unittest.TestCase):
+    def setUp(self):
+        self.original = ds.urllib.request.urlopen
+
+    def tearDown(self):
+        ds.urllib.request.urlopen = self.original
+
+    def test_html_to_text_keeps_content_and_drops_scripts(self):
+        text = ds.html_to_text(GUIDE_HTML.decode())
+        self.assertIn("R = 10 kΩ and C = 1 μF.", text)
+        self.assertIn("Chip Power-up and Reset Timing", text)
+        self.assertIn("tSTBL", text)
+        self.assertNotIn("in a script", text)
+        self.assertNotIn("color: red", text)
+        self.assertNotIn("Home | Next", text)
+
+    def test_looks_like_html(self):
+        self.assertTrue(ds.looks_like_html(b"  <!doctype html><html>"))
+        self.assertTrue(ds.looks_like_html(b'<?xml version="1.0"?><html xmlns="x">'))
+        self.assertFalse(ds.looks_like_html(b"%PDF-1.4"))
+        self.assertFalse(ds.looks_like_html(b"\x89PNG"))
+
+    def test_download_kinds(self):
+        with tempfile.TemporaryDirectory() as d:
+            dest = os.path.join(d, "A.pdf")
+            ds.urllib.request.urlopen = _serve(b"%PDF-1.4 body")
+            self.assertEqual(ds.download("https://x/a.pdf", dest), "pdf")
+            self.assertTrue(os.path.exists(dest))
+            dest = os.path.join(d, "B.pdf")
+            ds.urllib.request.urlopen = _serve(GUIDE_HTML)
+            self.assertEqual(ds.download("https://x/guide", dest), "html")
+            self.assertFalse(os.path.exists(dest))
+            self.assertTrue(os.path.exists(os.path.join(d, "B.html")))
+            self.assertIn("RC delay", open(os.path.join(d, "B.txt")).read())
+            ds.urllib.request.urlopen = _serve(b"\x89PNG image")
+            with self.assertRaises(RuntimeError):
+                ds.download("https://x/c.png", os.path.join(d, "C.pdf"))
+
+    def test_fetch_html_then_grep_with_dir_after_command(self):
+        with tempfile.TemporaryDirectory() as d:
+            ds.urllib.request.urlopen = _serve(GUIDE_HTML)
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(ds.main(["fetch", "HW=https://x/guide", "--dir", d]), 0)
+            self.assertIn("from an HTML page, not a PDF", out.getvalue())
+            manifest = json.load(open(os.path.join(d, "manifest.json")))
+            self.assertEqual(manifest["HW"]["file"], "HW.html")
+            out = io.StringIO()
+            with contextlib.redirect_stdout(out):
+                self.assertEqual(ds.main(["grep", "HW", "RC delay", "--dir", d]), 0)
+            self.assertIn("--- page 1", out.getvalue())
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                self.assertEqual(ds.main(["page", "HW", "1", "--dir", d]), 1)
+            self.assertIn("HTML page", err.getvalue())
+
+    def test_dir_before_command_still_works(self):
+        with tempfile.TemporaryDirectory() as d:
+            open(os.path.join(d, "X.txt"), "w").write(TEXT)
+            with contextlib.redirect_stdout(io.StringIO()) as out:
+                self.assertEqual(ds.main(["--dir", d, "grep", "X", "EN high"]), 0)
+            self.assertIn("page 4", out.getvalue())
+
+
 def _pdf(text):
     """Build a one-page PDF containing `text` (Helvetica), with a correct xref table."""
     stream = f"BT /F1 12 Tf 20 100 Td ({text}) Tj ET".encode()

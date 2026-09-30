@@ -115,7 +115,12 @@ python3 <skill>/scripts/datasheet.py sections AO3400A        # pages for pinout,
 python3 <skill>/scripts/datasheet.py grep all "Absolute Maximum" -C 4    # across every datasheet
 python3 <skill>/scripts/datasheet.py grep AO3400A "Gate Threshold|VGS\(th\)" -C 1
 python3 <skill>/scripts/datasheet.py page AO3400A 1          # render one page, for a drawing
+python3 <skill>/scripts/datasheet.py fetch ESP32S3-HW=<online design-guide page>   # HTML: saved as text
 ```
+
+A vendor document published as a web page (Espressif's hardware design guidelines, an online
+manual) is fetched the same way; its text is grepped like a datasheet. `--dir` goes before or
+after the command.
 
 Read tables (thresholds, ratings, pin tables) as text with `grep`; it is far cheaper than looking
 at page images. Render a page only for drawings (pinout, package outline, land pattern), and only
