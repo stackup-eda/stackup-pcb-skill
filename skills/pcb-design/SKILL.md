@@ -22,8 +22,8 @@ level's work. Verification depth stays; what scales is how much gets built aroun
 
 | Level | Examples | Do | Don't |
 |---|---|---|---|
-| **Question or review** | "is this pull-up OK?", "what should I check before fab?" | Lead with the verdict, then only the numbers and datasheet rows that settle it (grep them with `datasheet.py`; don't read whole documents). A quick question gets roughly 100-250 words and about five tool calls: fetch and grep the one document that settles it, then answer. A design review is longer, but findings come first | Build files, simulations or project scaffolding; look up stock or second sources nobody asked about; list every caveat you can think of |
-| **Part or value change** | swap a FET, change a resistor | DC bias for the touched nodes; the datasheet rows that matter; tier/stock and a second source; edit the placement; `stackup check`; rerun an existing simulation, or run the template if the node is power/latch/enable; tell the user to sync the PCB from Stackup | Download every datasheet on the board, write new tooling, restructure the repo |
+| **Question or review** | "is this pull-up OK?", "what should I check before fab?" | Lead with the verdict, then only the numbers and datasheet rows that settle it (grep them with `datasheet.py`; don't read whole documents). A quick question gets under 250 words (the verdict, the numbers that settle it with their table or page, at most two caveats) and about five tool calls: fetch and grep the one document that settles it (`datasheet.py` takes HTML pages too), then answer. If the document won't fetch after one retry, answer anyway and say which numbers are from memory. A design review is longer, but findings come first | Build files, simulations or project scaffolding; look up stock or second sources nobody asked about; list every caveat you can think of; add assumption or bench-check paragraphs a short answer doesn't need |
+| **Part or value change** | swap a FET, change a resistor | DC bias for the touched nodes; the datasheet rows that matter; the new part's pinout from its manufacturer's drawing, cited by page; tier/stock and a second source; edit the placement; `stackup check`; rerun an existing simulation, or run the template if the node is power/latch/enable; tell the user to sync the PCB from Stackup | Download every datasheet on the board, write new tooling, restructure the repo |
 | **New circuit** | a power latch, a charger, a sensor block | The full workflow below for that circuit, including a simulation built from `scripts/spice_template.py` | CI setup, READMEs, repo layout, unless asked |
 | **Board to fab** | "we're ordering" | The pre-order checks in `references/kicad.md` and `references/bom-and-fab.md`, and the repo conventions at the end | |
 
@@ -166,7 +166,9 @@ help and you don't have it, say it's an assumption.
 Findings from outside tools (a design-review analyzer, another person's checker, an AI review) are
 leads, not facts. Re-derive each one from the design and the datasheets before acting: they can be
 wrong as stated yet point at a real problem, and their assumptions (a diode drop, a threshold) are
-often off.
+often off. Check each assumption at the real operating point (a diode's drop at the µA it actually
+carries, not its 1 mA rating) and name every one that was wrong, even when the finding's final
+number happens to land close.
 
 The same goes for your own reasoning about alternatives. Don't reject an option (a simpler fix, a
 different part) on an argument alone when a short calculation or a run of the simulation you
