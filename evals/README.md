@@ -55,7 +55,7 @@ You are running one test case for a skill evaluation.
 [Skill to use: read <repo>/skills/pcb-design/SKILL.md first and follow it.]
 Task (from the user): "<prompt>"
 [The user's design: copy <fixture files> into outputs/design/ and work on that copy.]
-Environment: Stackup CLI at ~/.cargo/bin/stackup, built from commit 1acb9ba (the pin in
+Environment: Stackup CLI 0.2.0 at ~/.cargo/bin/stackup (the pin in
 references/stackup.md); KiCad with libngspice; network access.
 Rules:
 - Write every file ONLY inside <outputs>/. Put temporary files in <outputs>/scratch/. Do not use

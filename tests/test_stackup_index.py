@@ -48,7 +48,7 @@ def make_lib(root):
     os.makedirs(os.path.join(root, "examples"))
     open(os.path.join(root, "power", "buck", "demo.kdl"), "w").write(BUCK)
     open(os.path.join(root, "examples", "ex.kdl"), "w").write("part hidden {\n}\n")
-    open(os.path.join(root, "manifest.kdl"), "w").write('stackup "0.1"\n')
+    open(os.path.join(root, "manifest.kdl"), "w").write('stackup "0.2"\n')
 
 
 class ParseTests(unittest.TestCase):
@@ -91,7 +91,7 @@ class IndexTests(unittest.TestCase):
             url = "https://github.com/stackup-eda/library"
             rev = "9120a03038a79a3fc05ed309dbb8858c06370739"
             open(os.path.join(d, "manifest.kdl"), "w").write(
-                f'stackup "0.1"\nlibrary stackup git="{url}" rev="{rev}"\n')
+                f'stackup "0.2"\nlibrary stackup git="{url}" rev="{rev}"\n')
             sub = os.path.join(d, "PCB", "stackup")
             os.makedirs(sub)
             manifest = si.find_manifest(sub)
