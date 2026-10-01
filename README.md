@@ -72,6 +72,41 @@ For any PCB or electronics hardware work, first read ~/repos/pcbskill/skills/pcb
 follow it, reading its references/ and using its scripts/ as it directs.
 ```
 
+### Distributor API keys (optional)
+
+`distributor_stock.py` checks stock and price at JLCPCB, Mouser and DigiKey. JLCPCB needs no key.
+Mouser and DigiKey need free API credentials; without them the script reports those two as
+"no key" and checks JLCPCB only.
+
+1. Get the credentials:
+   - **Mouser**: sign in at the [Mouser API Hub](https://www.mouser.com/api-hub/) and request a
+     Search API key.
+   - **DigiKey**: at [developer.digikey.com](https://developer.digikey.com/), create an organization
+     and a Production app with the Product Information v4 API, then copy its Client ID and Client
+     Secret.
+2. Put them in `~/.config/pcb-design/api-keys.env`, one `KEY=value` per line, and make the file
+   readable only by you:
+
+   ```sh
+   mkdir -p ~/.config/pcb-design
+   cat > ~/.config/pcb-design/api-keys.env <<'EOF'
+   MOUSER_API_KEY=your-mouser-search-api-key
+   DIGIKEY_CLIENT_ID=your-digikey-client-id
+   DIGIKEY_CLIENT_SECRET=your-digikey-client-secret
+   EOF
+   chmod 600 ~/.config/pcb-design/api-keys.env
+   ```
+
+   Keep this file outside every repository so the keys never get committed. Blank lines, `#`
+   comments, `export` prefixes and quoted values are all accepted.
+3. Check it: `python3 skills/pcb-design/scripts/distributor_stock.py AO3401A` should show stock from
+   all three distributors.
+
+Environment variables with the same names (`MOUSER_API_KEY`, `DIGIKEY_CLIENT_ID`,
+`DIGIKEY_CLIENT_SECRET`) take precedence over the file, so you can set them in your shell profile or
+a secrets manager instead. To keep the file somewhere else, point `PCB_DESIGN_KEYS` at it, or pass
+`--keys <path>` to the script.
+
 ## Develop
 
 ```sh
