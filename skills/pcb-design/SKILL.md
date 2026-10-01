@@ -33,7 +33,8 @@ the design itself (KDL), the simulation and its results, and data a check needs 
 fetched, the BOM export). When something below the current level is missing (no CI check, no
 datasheet folder, no bench checklist file), mention it in one line instead of building it.
 
-Look things up in batches: `jlc_parts.py A B C --exact --best` checks every part in one call, and
+Look things up in batches: `jlc_parts.py A B C --exact --best` (or `distributor_stock.py A B C` for
+Mouser and DigiKey too) checks every part in one call, and
 `datasheet.py fetch A=<url> B=<url>` / `grep all <pattern>` fetch and search several datasheets at
 once.
 
@@ -46,7 +47,7 @@ once.
 | Layout, routing, DRC, gerbers | **KiCad** (currently 10) PCB editor | Linked to the KDL by a `.stackup_sch` file; synced with the Stackup plugin |
 | Purchasing BOM | `stackup bom <board.kdl> --locked` | Separate manufacturer / MPN / distributor columns |
 | Circuit simulation | **ngspice** via KiCad's bundled `libngspice` | Python + ctypes; see `scripts/ngspice_harness.py` |
-| Part availability | JLCPCB parts search, then Mouser / DigiKey / Adafruit stock | See `scripts/jlc_parts.py` |
+| Part availability | JLCPCB parts search, then Mouser / DigiKey / Adafruit stock | See `scripts/jlc_parts.py` and `scripts/distributor_stock.py` |
 
 Bundled scripts (use them instead of writing your own):
 
@@ -55,6 +56,7 @@ Bundled scripts (use them instead of writing your own):
 | `stackup_index.py [filter]` | list the library's parts and blocks, with packages, MPNs, features and parameters |
 | `datasheet.py fetch/sections/grep/page` | download datasheets once (several per call), read tables as text across all of them, render only drawing pages |
 | `jlc_parts.py <MPN> [<MPN>…] --best` | LCSC number, JLCPCB tier and stock for one or many parts |
+| `distributor_stock.py <MPN> [<MPN>…]` | JLCPCB, Mouser and DigiKey stock and price, one line per part (Mouser/DigiKey need free API keys; without them it reports JLCPCB only) |
 | `spice_template.py` + `spice_lib.py` + `ngspice_harness.py` | simulate a circuit: copy the template, edit values, netlist, limits and checks |
 | `bom_check.py` | check a `stackup bom` export for blank or ambiguous lines |
 | `footprint_geometry.py` | measure footprints (fields, pads, body, Edge.Cuts cutout) to compare against the package drawing |

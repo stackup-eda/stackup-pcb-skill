@@ -65,10 +65,26 @@ For each non-generic part (anything but a jellybean resistor or capacitor), reco
   JLCPCB's API, with `library_type` and `basic` columns) is a good independent check; a part absent
   from it is very likely plain Extended.
 - **Mouser, DigiKey, Adafruit**: in-stock quantity and number of manufacturers listing the part.
-  Their stock pages indicate broad availability even when the board is assembled at JLCPCB. These need API keys
-  for scripted access, so check the product or search pages (with whatever web fetch or search tool is available) and quote the
-  numbers with the date checked. Adafruit is a good signal that a part is maker-friendly and has
-  breakout-board precedent.
+  Their stock indicates broad availability even when the board is assembled at JLCPCB. Use
+  `scripts/distributor_stock.py`, which checks JLCPCB, Mouser and DigiKey for exact MPNs in one call:
+
+  ```sh
+  python3 <skill>/scripts/distributor_stock.py AO3400A AO3401A TLV62569DBVR   # one line per part
+  python3 <skill>/scripts/distributor_stock.py AO3401A --json                 # SKUs, lead time, on order
+  ```
+
+  Mouser and DigiKey need free API credentials (its docstring says where to get them and where to
+  keep them, outside any repository). Without them it reports "no key" for those two and still
+  returns JLCPCB; then check their product pages with whatever web fetch or search tool is
+  available. Distributor sites often block automated page fetches, and search-engine snippets of
+  their stock can be months old. Know the traps:
+  - out of stock is a real 0, not a failed lookup. DigiKey reports a part it lists but has none of
+    with a null quantity. Before concluding that a lookup is broken because everything reads 0,
+    check a part that is certainly in stock;
+  - "on order" is the distributor's incoming quantity and expected date, not a promise.
+
+  Quote every number with the date checked. Adafruit is a good signal that a part is
+  maker-friendly and has breakout-board precedent.
 - **Second sources**: other manufacturers making the same part in the same package (for AO3401A,
   several makers list it in SOT-23; for BAT54W, Diodes, Nexperia and others in SOT-323).
 
