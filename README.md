@@ -28,6 +28,7 @@ skills/pcb-design/
     stackup_index.py           list the Stackup library's parts and blocks
     datasheet.py               fetch a datasheet once; read tables as text, render only drawings
     jlc_parts.py               JLCPCB part lookup: LCSC number, tier, stock
+    distributor_stock.py       JLCPCB, Mouser and DigiKey stock and price per MPN (API keys optional)
     spice_template.py          copy-and-edit SPICE checks for a power latch (insertion/press/shutdown)
     spice_lib.py               generic models, stimulus, measurements and a corner-matrix runner
     ngspice_harness.py         run ngspice from Python via ctypes
@@ -80,5 +81,5 @@ python3 skills/pcb-design/scripts/ngspice_harness.py --selftest
 
 The simulation tests run against KiCad's libngspice, the PDF tests against poppler, and the
 documentation test (the Stackup example in `references/stackup.md`) against the `stackup` CLI; each
-is skipped when its tool isn't installed. Network lookups (`jlc_parts.py`, `datasheet.py fetch`) are
-tested with fixtures.
+is skipped when its tool isn't installed. Network lookups (`jlc_parts.py`, `distributor_stock.py`,
+`datasheet.py fetch`) are tested with fixtures.
