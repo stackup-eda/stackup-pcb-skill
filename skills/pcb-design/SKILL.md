@@ -123,7 +123,8 @@ Each of these catches a real class of bug. The references explain them.
   source, say so explicitly. Details are in
   [references/parts-sourcing.md](references/parts-sourcing.md#datasheets).
 - **Every footprint's geometry matches the part's package drawing.** Body size, pad count and
-  numbering, pitch, pad spans and pin 1, measured from the footprint actually on the board
+  numbering, pitch, pad spans, pin 1, and the drawing's view (top or bottom) against which way up
+  the part mounts, measured from the footprint actually on the board
   (`scripts/footprint_geometry.py`) and compared with the manufacturer's drawing. A plausible
   footprint name proves nothing: a footprint for the wrong body size has passed every check and
   been rejected by the assembler. Pad numbers are the datasheet's pin numbers: pad N is pin N, at

@@ -232,6 +232,44 @@ class EdgeCutsTests(unittest.TestCase):
         self.assertAlmostEqual(box.max_x, 6.0)
 
 
+class MountingWarningTests(unittest.TestCase):
+    # A reverse-mount part's footprint that lost its cutout: bottom-view pads and nothing else.
+    NO_CUTOUT = """(footprint "Test:LED_ReverseMount"
+  (descr "addressable LED")
+  (attr smd)
+  (pad "1" smd rect (at -2.27 1.06) (size 1.34 0.68) (layers "F.Cu"))
+  (pad "2" smd rect (at -2.27 -1.06) (size 1.34 0.68) (layers "F.Cu"))
+)
+"""
+
+    def warnings(self, text):
+        return g.measure(g.load_library_footprint(text))["warnings"]
+
+    def test_reverse_mount_without_cutout_warns(self):
+        (warning,) = self.warnings(self.NO_CUTOUT)
+        self.assertIn("no Edge.Cuts cutout", warning)
+        self.assertIn("bottom view", warning)
+
+    def test_found_in_description_or_tags(self):
+        for node in ('(descr "Pad layout follows the BOTTOM VIEW of the reverse-mount package")',
+                     '(tags "RGB LED Reverse_Mount")', '(tags "reversemount")'):
+            text = f'(footprint "Test:LED" {node} (pad "1" smd rect (at 0 0) (size 1 1)))'
+            with self.subTest(node=node):
+                self.assertEqual(len(self.warnings(text)), 1)
+
+    def test_cutout_or_no_claim_is_quiet(self):
+        with_cut = self.NO_CUTOUT.replace(
+            "(attr smd)", '(attr smd)\n  (fp_rect (start -1.7 -1.5) (end 1.7 1.5) (layer "Edge.Cuts"))')
+        self.assertEqual(self.warnings(with_cut), [])
+        self.assertEqual(self.warnings(FOOTPRINT), [])
+
+    def test_warning_in_report_and_json(self):
+        m = g.measure(g.load_library_footprint(self.NO_CUTOUT))
+        self.assertIn("Warning: described as reverse-mount", g.format_report(m))
+        self.assertNotIn("Warning", g.format_report(g.measure(g.load_library_footprint(FOOTPRINT))))
+        self.assertEqual(json.loads(json.dumps(m))["warnings"], m["warnings"])
+
+
 class LibraryLookupTests(unittest.TestCase):
     def test_finds_in_lib_dir_before_defaults(self):
         with tempfile.TemporaryDirectory() as d:
