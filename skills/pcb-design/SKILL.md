@@ -59,7 +59,7 @@ Bundled scripts (use them instead of writing your own):
 | `distributor_stock.py <MPN> [<MPN>…]` | JLCPCB, Mouser and DigiKey stock and price, one line per part (Mouser/DigiKey need free API keys; without them it reports JLCPCB only) |
 | `spice_template.py` + `spice_lib.py` + `ngspice_harness.py` | simulate a circuit: copy the template, edit values, netlist, limits and checks |
 | `bom_check.py` | check a `stackup bom` export for blank or ambiguous lines |
-| `footprint_geometry.py` | measure footprints (fields, pads, body, Edge.Cuts cutout) to compare against the package drawing |
+| `footprint_geometry.py` | measure footprints (fields, pads, body, Edge.Cuts cutout) to compare against the package drawing; `--pins` checks pad numbers against the datasheet's pin table |
 | `check_pcb_sync.py` | CI check that the KiCad PCB matches the Stackup design |
 
 Read [references/stackup.md](references/stackup.md) before writing or editing KDL. The language is
@@ -126,7 +126,10 @@ Each of these catches a real class of bug. The references explain them.
   numbering, pitch, pad spans and pin 1, measured from the footprint actually on the board
   (`scripts/footprint_geometry.py`) and compared with the manufacturer's drawing. A plausible
   footprint name proves nothing: a footprint for the wrong body size has passed every check and
-  been rejected by the assembler. See [references/kicad.md](references/kicad.md#footprints).
+  been rejected by the assembler. Pad numbers are the datasheet's pin numbers: pad N is pin N, at
+  pin N's position, even when another numbering would wire up the same. The assembler reads the
+  numbers on the board, in screenshots and in the datasheet side by side. See
+  [references/kicad.md](references/kicad.md#footprints).
 - **Every component is fully specified for the BOM:** MPN, manufacturer, value, package,
   description, and any specific details a buyer could get wrong (orientation, variant, polarity,
   voltage rating, dielectric, tolerance). The exported BOM must be complete with no room for

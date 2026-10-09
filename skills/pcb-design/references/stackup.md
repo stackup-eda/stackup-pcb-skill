@@ -195,7 +195,11 @@ Key ideas (SPEC sections in brackets):
   on hardware). Every `ignore` is a claim someone must be able to audit.
 - A project-specific part goes in `parts.kdl`: `part`, `reference`, `symbol`, `value`,
   `description`, pins named as the datasheet names them with their electrical kind, and a `package`
-  mapping pins to pads. Verify every pad against the manufacturer's pinout drawing.
+  mapping pins to pads. Verify every pad against the manufacturer's pinout drawing. Each pin maps to
+  the pad with its datasheet number (`pad VDD 1` when the datasheet's pin 1 is VDD), not to a KiCad
+  symbol's pin order or another part's numbering, and the footprint is numbered the same way. Check
+  library parts' `package` blocks the same way: a map that follows a symbol's pin order connects
+  correctly but puts the wrong numbers on the board ([kicad.md](kicad.md#footprints)).
 - If a part is generally useful, it belongs in the library (upstream PR) rather than the project;
   follow the library README conventions (family files, functional directories, header comment with
   constraints and unverified details).
