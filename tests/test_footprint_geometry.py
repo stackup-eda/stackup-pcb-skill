@@ -297,6 +297,20 @@ class PinNumberingTests(unittest.TestCase):
                          [("1", "unchecked"), ("2", "missing"), ("3", "missing"), ("4", "extra")])
         self.assertFalse(g.pins_ok(rows))
 
+    def test_stackup_pad_suffix_is_ignored(self):
+        # Stackup's sync writes pin functions as <name>_<pad>: VSS_1, DIN_2.
+        board = (SYMBOL_NUMBERED.replace('"VSS"', '"VSS_1"').replace('"vdd"', '"VDD_1"')
+                 .replace('(pinfunction "GND")', '(pinfunction "GND_3")'))
+        d1 = g.check_pins(g.measure(*g.load_board_footprint(board, "D1")), g.parse_pins(DATASHEET_PINS))
+        self.assertEqual((d1[0]["pin_function"], d1[0]["status"]), ("VSS", "mismatch"))
+        d2 = g.check_pins(g.measure(*g.load_board_footprint(board, "D2")), g.parse_pins(DATASHEET_PINS))
+        self.assertEqual({r["status"] for r in d2}, {"ok"})
+
+    def test_pin_name(self):
+        self.assertEqual(g.pin_name("GND_3", "3"), "GND")
+        self.assertEqual(g.pin_name("GND_3", "1"), "GND_3")  # another pad's number stays
+        self.assertEqual(g.pin_name("_1", "1"), "_1")
+
     def test_parse_pins(self):
         self.assertEqual(g.parse_pins("1=VDD, 2=DOUT A1=GND"), {"1": "VDD", "2": "DOUT", "A1": "GND"})
         for bad in ("1VDD", "=VDD", "1=", "1=VDD,1=GND"):

@@ -361,20 +361,29 @@ def parse_pins(text):
     return pins
 
 
+def pin_name(pin_function, pad_number):
+    """A pad's pin function without the "_<pad number>" suffix Stackup's sync adds (VSS_1 -> VSS)."""
+    suffix = "_" + pad_number
+    if pin_function.endswith(suffix) and len(pin_function) > len(suffix):
+        return pin_function[:-len(suffix)]
+    return pin_function
+
+
 def check_pins(m, pins):
     """Compare a measured footprint with the datasheet's pin table {number: name}.
 
     Each pad N must exist for datasheet pin N and, where the board records a pin function, carry
     pin N's name (case-insensitive). Returns one row per pin or pad, with status "ok", "mismatch",
     "missing" (no such pad), "extra" (a pad the datasheet doesn't list) or "unchecked" (no pin
-    function on the pad, so only its number could be compared)."""
+    function on the pad, so only its number could be compared). A "_<pad number>" suffix on the pin
+    function, as Stackup's sync writes it, is ignored."""
     by_number = {}
     for p in m["pads"]:
         by_number.setdefault(p["number"], []).append(p)
     rows = []
     for number in sorted(set(pins) | set(by_number), key=pad_sort_key):
         expected, pads = pins.get(number), by_number.get(number, [])
-        functions = sorted({p["pin_function"] for p in pads if p["pin_function"]})
+        functions = sorted({pin_name(p["pin_function"], number) for p in pads if p["pin_function"]})
         nets = sorted({p["net"] for p in pads if p["net"]})
         if expected is None:
             status = "extra"
