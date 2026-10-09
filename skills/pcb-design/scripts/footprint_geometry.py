@@ -2,7 +2,7 @@
 """Measure a KiCad footprint so it can be compared against the part's package drawing.
 
 Reports the footprint's properties (value, manufacturer, MPN and other fields), pad count and
-numbering, each pad's position and size, pad pitch, the span of the pads, the body outline (Fab
+numbering, each pad's position, size, net and pin function (on a board), pad pitch, the span of the pads, the body outline (Fab
 layer), the courtyard, and any board cutout the footprint carries on Edge.Cuts with its smallest
 gap to a pad. Compare those numbers with the manufacturer's package drawing and recommended land
 pattern; a name that looks right proves nothing.
@@ -11,7 +11,12 @@ pattern; a name that looks right proves nothing.
     footprint_geometry.py path/to/Part.kicad_mod
     footprint_geometry.py --pcb PCB/board.kicad_pcb --ref D1     # what is actually on the board
     footprint_geometry.py --pcb PCB/board.kicad_pcb              # every footprint on the board
+    footprint_geometry.py --pcb PCB/board.kicad_pcb --ref D1 --pins 1=VDD,2=DOUT,3=GND,4=DIN
     footprint_geometry.py ... --json
+
+--pins takes the datasheet's pin table (number=name) and checks that pad N is the datasheet's
+pin N: the same pad numbers, and on a board, the same pin function on each pad. It exits 3 when
+they differ.
 
 `Lib:Name` is looked up as <dir>/<Lib>.pretty/<Name>.kicad_mod in each --lib-dir, then in
 KICAD_FOOTPRINT_DIR, then in the standard KiCad install locations. Coordinates are in mm in the
@@ -108,6 +113,8 @@ class Pad:
     height: float
     drill: float | None = None
     corner_radius: float = 0.0
+    net: str | None = None
+    pin_function: str | None = None
 
 
 @dataclass
@@ -262,6 +269,15 @@ def properties_of(footprint):
     return props
 
 
+def _last_text(node):
+    """The name in a (net 3 "GND"), (net "GND") or (pinfunction "VDD") node, or None."""
+    return str(node[-1]) if node and len(node) > 1 and str(node[-1]) else None
+
+
+def pad_sort_key(number):
+    return (len(number), number)
+
+
 def read_pads(footprint, footprint_angle=0.0):
     """Pads in the footprint's own frame. In a .kicad_pcb, a pad's angle includes the footprint's
     rotation, so it is subtracted to recover the pad's own orientation."""
@@ -286,7 +302,8 @@ def read_pads(footprint, footprint_angle=0.0):
             radius = min(w, h) * (float(ratio[1]) if ratio else 0.25)
         else:
             radius = 0.0
-        pads.append(Pad(str(pad[1]), str(pad[2]), shape, x, y, w, h, drill, radius))
+        pads.append(Pad(str(pad[1]), str(pad[2]), shape, x, y, w, h, drill, radius,
+                        _last_text(child(pad, "net")), _last_text(child(pad, "pinfunction"))))
     return pads
 
 
@@ -317,7 +334,7 @@ def measure(footprint, footprint_angle=0.0):
         "properties": properties_of(footprint),
         "type": attr[1] if attr else "unspecified",
         "pad_count": len(pads),
-        "pad_numbers": sorted({p.number for p in pads}, key=lambda n: (len(n), n)),
+        "pad_numbers": sorted({p.number for p in pads}, key=pad_sort_key),
         "pads": [asdict(p) for p in pads],
         "pitches": pitches(pads),
         "pad_center_span": asdict(centers) if centers else None,
@@ -327,6 +344,82 @@ def measure(footprint, footprint_angle=0.0):
         "edge_cuts": asdict(b) if (b := box_of([pt for seg in cuts for pt in seg])) else None,
         "edge_cuts_pad_clearance": {"gap": clearance[0], "pad": clearance[1]} if clearance else None,
     }
+
+
+# --- Pin numbering against the datasheet ------------------------------------------------------
+
+def parse_pins(text):
+    """'1=VDD,2=DOUT' (commas or spaces) as {"1": "VDD", "2": "DOUT"}."""
+    pins = {}
+    for item in text.replace(",", " ").split():
+        number, sep, name = item.partition("=")
+        if not sep or not number or not name:
+            raise ValueError(f"expected number=name in --pins, got {item!r}")
+        if number in pins:
+            raise ValueError(f"pin {number} given twice in --pins")
+        pins[number] = name
+    return pins
+
+
+def pin_name(pin_function, pad_number):
+    """A pad's pin function without the "_<pad number>" suffix Stackup's sync adds (VSS_1 -> VSS)."""
+    suffix = "_" + pad_number
+    if pin_function.endswith(suffix) and len(pin_function) > len(suffix):
+        return pin_function[:-len(suffix)]
+    return pin_function
+
+
+def check_pins(m, pins):
+    """Compare a measured footprint with the datasheet's pin table {number: name}.
+
+    Each pad N must exist for datasheet pin N and, where the board records a pin function, carry
+    pin N's name (case-insensitive). Returns one row per pin or pad, with status "ok", "mismatch",
+    "missing" (no such pad), "extra" (a pad the datasheet doesn't list) or "unchecked" (no pin
+    function on the pad, so only its number could be compared). A "_<pad number>" suffix on the pin
+    function, as Stackup's sync writes it, is ignored."""
+    by_number = {}
+    for p in m["pads"]:
+        by_number.setdefault(p["number"], []).append(p)
+    rows = []
+    for number in sorted(set(pins) | set(by_number), key=pad_sort_key):
+        expected, pads = pins.get(number), by_number.get(number, [])
+        functions = sorted({pin_name(p["pin_function"], number) for p in pads if p["pin_function"]})
+        nets = sorted({p["net"] for p in pads if p["net"]})
+        if expected is None:
+            status = "extra"
+        elif not pads:
+            status = "missing"
+        elif not functions:
+            status = "unchecked"
+        elif all(f.casefold() == expected.casefold() for f in functions):
+            status = "ok"
+        else:
+            status = "mismatch"
+        rows.append({"pad": number, "datasheet": expected, "pin_function": ", ".join(functions) or None,
+                     "net": ", ".join(nets) or None, "status": status})
+    return rows
+
+
+def format_pin_check(rows):
+    lines = ["", "Datasheet pin numbering:",
+             f"{'Pad':>4}  {'datasheet':12} {'pad function':12} {'net':16} result"]
+    for r in rows:
+        lines.append(f"{r['pad']:>4}  {r['datasheet'] or '-':12} {r['pin_function'] or '-':12} "
+                     f"{r['net'] or '-':16} {r['status']}")
+    bad = [r for r in rows if r["status"] in ("mismatch", "missing", "extra")]
+    if bad:
+        lines.append("FAIL: pad numbers don't follow the datasheet's pin numbers. Renumber the "
+                     "footprint's pads and the part's pin-to-pad map together.")
+    elif any(r["status"] == "unchecked" for r in rows):
+        lines.append("Pad numbers match; pads without a pin function were not checked by name: "
+                     "compare their position and net with the datasheet's pinout drawing.")
+    else:
+        lines.append("OK: every pad carries the datasheet's pin of the same number.")
+    return "\n".join(lines)
+
+
+def pins_ok(rows):
+    return not any(r["status"] in ("mismatch", "missing", "extra") for r in rows)
 
 
 # --- Finding the footprint -------------------------------------------------------------------
@@ -389,12 +482,17 @@ def fmt(v):
 def format_report(m):
     lines = [f"Footprint: {m['name']}"]
     lines += [f"  {k}: {v}" for k, v in m["properties"].items()]
+    connected = any(p["net"] or p["pin_function"] for p in m["pads"])
     lines += [f"Type: {m['type']}   Pads: {m['pad_count']} (numbers {', '.join(m['pad_numbers'])})",
-             "", f"{'Pad':>4} {'X':>8} {'Y':>8} {'W':>7} {'H':>7}  {'shape':10} drill"]
-    for p in sorted(m["pads"], key=lambda p: (len(p["number"]), p["number"], p["x"], p["y"])):
+             "", f"{'Pad':>4} {'X':>8} {'Y':>8} {'W':>7} {'H':>7}  {'shape':10} {'drill':6}" +
+             (f" {'function':12} net" if connected else "")]
+    for p in sorted(m["pads"], key=lambda p: (*pad_sort_key(p["number"]), p["x"], p["y"])):
         drill = fmt(p["drill"]) if p["drill"] else "-"
-        lines.append(f"{p['number']:>4} {fmt(p['x']):>8} {fmt(p['y']):>8} {fmt(p['width']):>7} "
-                     f"{fmt(p['height']):>7}  {p['shape']:10} {drill}")
+        line = (f"{p['number']:>4} {fmt(p['x']):>8} {fmt(p['y']):>8} {fmt(p['width']):>7} "
+                f"{fmt(p['height']):>7}  {p['shape']:10} {drill:6}")
+        if connected:
+            line += f" {p['pin_function'] or '-':12} {p['net'] or '-'}"
+        lines.append(line.rstrip())
     lines.append("")
     lines.append("Pitch (neighbouring pad centers): " +
                  (", ".join(fmt(v) for v in m["pitches"]) or "-"))
@@ -418,8 +516,12 @@ def main(argv=None):
     parser.add_argument("--ref", help="reference designator to read from --pcb (default: all)")
     parser.add_argument("--lib-dir", action="append", default=[],
                         help="extra directory containing <Lib>.pretty folders (repeatable)")
+    parser.add_argument("--pins", help="datasheet pin table, e.g. 1=VDD,2=DOUT,3=GND,4=DIN: check "
+                        "that pad N is pin N (needs one footprint: a Lib:Name, a path or --ref)")
     parser.add_argument("--json", action="store_true")
     args = parser.parse_args(argv)
+    if args.pins and args.pcb and not args.ref:
+        parser.error("--pins checks one footprint: add --ref")
 
     try:
         if args.pcb:
@@ -440,12 +542,23 @@ def main(argv=None):
         print(f"error: {e}", file=sys.stderr)
         return 1
 
+    try:
+        pins = parse_pins(args.pins) if args.pins else None
+    except ValueError as e:
+        print(f"error: {e}", file=sys.stderr)
+        return 1
+
     results = [measure(fp, angle) for _, fp, angle in found]
+    rows = check_pins(results[0], pins) if pins else None
     if args.json:
-        print(json.dumps(results if args.pcb and not args.ref else results[0], indent=2))
+        out = results if args.pcb and not args.ref else results[0]
+        if rows is not None:
+            out = dict(out, pin_check=rows)
+        print(json.dumps(out, indent=2))
     else:
-        print("\n\n".join(format_report(m) for m in results))
-    return 0
+        report = "\n\n".join(format_report(m) for m in results)
+        print(report + ("\n" + format_pin_check(rows) if rows is not None else ""))
+    return 3 if rows is not None and not pins_ok(rows) else 0
 
 
 if __name__ == "__main__":

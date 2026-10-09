@@ -53,14 +53,16 @@ assignment. Check the geometry of every footprint against the part:
    python3 <skill>/scripts/footprint_geometry.py LED_SMD:<Name>        # a library candidate
    ```
    It prints the footprint's fields (value, manufacturer, MPN, whatever the board carries), pad
-   count and numbering, pad positions and sizes, pitch, pad spans, the body (Fab layer), the
-   courtyard, and any cutout the footprint puts on Edge.Cuts with its smallest gap to a pad, all in
-   the footprint's own unrotated frame, like the drawing's top view. Identify the part from those
-   fields; don't report a board as missing MPNs without looking at them.
+   count and numbering, pad positions and sizes, each pad's pin function and net on a board,
+   pitch, pad spans, the body (Fab layer), the courtyard, and any cutout the footprint puts on
+   Edge.Cuts with its smallest gap to a pad, all in the footprint's own unrotated frame, like the
+   drawing's top view. Identify the part from those fields; don't report a board as missing MPNs
+   without looking at them.
 3. **Compare in a table** (drawing vs footprint) and show it. Pad count and numbering must match
-   exactly. Body size must match the drawing. Pitch and spans should be within about 0.05 mm, and pad
-   sizes close to the recommended land pattern. A body whose size differs by millimetres means a
-   different package, whatever the name says.
+   exactly (see "Pad numbers are the datasheet's pin numbers" below). Body size must match the
+   drawing. Pitch and spans should be within about 0.05 mm, and pad sizes close to the recommended
+   land pattern. A body whose size differs by millimetres means a different package, whatever the
+   name says.
 4. **Look at the 3D view** with the part's model: the body should sit on the pads with the leads
    landing on them, and pin 1 should match the silkscreen mark.
 5. **Repeat after any part or footprint change,** after syncing the PCB, since the fab uses the
@@ -79,6 +81,25 @@ Also:
 - **Parts with no real datasheet** (OEM repair parts, salvaged modules): measure the physical part
   with calipers and check pin functions with a continuity tester before sending the board to fab.
   Mark the footprint unverified until then.
+- **Pad numbers are the datasheet's pin numbers.** Pad N carries the datasheet's pin N and sits
+  where the datasheet's drawing puts pin N. A footprint numbered some other way (after a KiCad
+  symbol's pin order, another vendor's part, or whatever the footprint's author picked) can still
+  connect every net correctly, because the part's pin-to-pad map absorbs the difference, and pass
+  every check. But the assembler compares the board's pad numbers, your screenshots and the
+  datasheet, and when they disagree they stop and ask, or guess. An addressable LED whose datasheet
+  reads 1 VDD, 2 DOUT, 3 GND, 4 DIN was laid out with pads numbered 1 VSS, 2 DIN, 3 VDD, 4 DOUT,
+  and the fab couldn't confirm its orientation. Check it from the board after syncing:
+  ```sh
+  python3 <skill>/scripts/footprint_geometry.py --pcb PCB/<board>.kicad_pcb --ref D1 \
+      --pins 1=VDD,2=DOUT,3=GND,4=DIN        # the datasheet's pin table, number=name
+  ```
+  It compares each pad's number and pin function with the table and exits 3 on any difference.
+  Pads with no pin function are checked by number only; compare their position and net with the
+  pinout drawing. Pass the pin names the part definition uses (the datasheet's, if the part
+  follows the rule in [stackup.md](stackup.md#4-parts-and-library-blocks)). To fix a mismatch,
+  renumber the footprint's pads to the datasheet and change the part's pin-to-pad map in the same
+  commit, then sync; changing only one of them swaps nets. A library part with the wrong map is
+  fixed in the library (or overridden by a project part) and reported upstream.
 - **Pin 1 and rotation**: check that the footprint's pad 1 matches the datasheet's pin 1 and that the
   silkscreen's pin-1 mark sits where an assembler will look for it.
 - **Cutouts in a footprint** (reverse-mount LEDs, slots) are board edges. Compare the reported
@@ -100,8 +121,8 @@ whether a few millimetres or a layer count change would move the board into a ch
    solder-mask sliver), and the stackup (layers, thickness, copper weight) matches what you'll order.
 4. Zones refilled, then DRC: zero errors and zero unrouted nets; each remaining warning documented
    with a reason. Edge.Cuts is one closed outline.
-5. Footprints match the manufacturer package drawing (see Footprints above), and 3D models are
-   present for the STEP export.
+5. Footprints match the manufacturer package drawing (see Footprints above), pad numbers match the
+   datasheet's pin numbers, and 3D models are present for the STEP export.
 6. Silkscreen: board name, revision and date updated before export; designators off the pads; pin-1
    and polarity marks where the assembler will look.
 7. BOM and position files regenerated (see [bom-and-fab.md](bom-and-fab.md)); the designators in the
