@@ -46,6 +46,8 @@ assignment. Check the geometry of every footprint against the part:
    length and width, pad count and pin numbering, pad size, pitch, the center-to-center span between
    pad rows or columns, the outer pad extent, pin 1 location, mounting style (a reverse-mount LED
    needs a board cutout, a right-angle connector overhangs), and any polarity or orientation mark.
+   Note which view each drawing is (top or bottom) and which way up the part will sit on this
+   board; see "Drawing view and mounting direction" below.
 2. **Measure the footprint actually on the board,** not the one you think is assigned:
    ```sh
    python3 <skill>/scripts/footprint_geometry.py --pcb PCB/<board>.kicad_pcb          # every footprint
@@ -56,7 +58,8 @@ assignment. Check the geometry of every footprint against the part:
    count and numbering, pad positions and sizes, each pad's pin function and net on a board,
    pitch, pad spans, the body (Fab layer), the courtyard, and any cutout the footprint puts on
    Edge.Cuts with its smallest gap to a pad, all in the footprint's own unrotated frame, like the
-   drawing's top view. Identify the part from those fields; don't report a board as missing MPNs
+   drawing's top view. It warns when the footprint's name, description or tags say reverse-mount
+   but it has no cutout. Identify the part from those fields; don't report a board as missing MPNs
    without looking at them.
 3. **Compare in a table** (drawing vs footprint) and show it. Pad count and numbering must match
    exactly (see "Pad numbers are the datasheet's pin numbers" below). Body size must match the
@@ -102,6 +105,24 @@ Also:
   fixed in the library (or overridden by a project part) and reported upstream.
 - **Pin 1 and rotation**: check that the footprint's pad 1 matches the datasheet's pin 1 and that the
   silkscreen's pin-1 mark sits where an assembler will look for it.
+- **Drawing view and mounting direction.** A land pattern is only right for one way up. Seen from
+  the side it's soldered on, a part shows its bottom when it sits face-down (a reverse-mount LED
+  shining through a hole in the board) and its top when it sits face-up. The two views are
+  mirror images, so a footprint drawn from the wrong one puts pins on the wrong pads, and no
+  rotation fixes a mirror. Before trusting a land pattern:
+
+  - say which way the part faces on this board (lens up or down, toward which side of the board);
+  - find which view the drawing used. Datasheets label it ("TOP VIEW", "BOTTOM VIEW") or show it by
+    where the polarity mark or chamfered corner falls. Don't assume a "recommended PCB pattern" is
+    drawn from the component side: a reverse-mount LED's datasheet can draw it in the top view's
+    orientation although the part sits face-down;
+  - match them: face-up wants the top view, face-down the bottom view. Then check pin 1's position
+    against that view, not just its number.
+
+  Reverse-mount packages usually have leads coming out partway up the body, so they need a body
+  cutout whichever way up they are mounted; check the side view. A reverse-mount footprint without
+  one is usually unusable either way up; `footprint_geometry.py` warns about it. If the part is meant to face up, a
+  top-mount version of the same LED or IC (a different package) is usually simpler than a cutout.
 - **Cutouts in a footprint** (reverse-mount LEDs, slots) are board edges. Compare the reported
   cutout-to-pad gap with the fab's minimum copper-to-edge clearance and make sure DRC checks it.
   Router-bit relief arcs at a cutout's inside corners bulge toward the pads, so the smallest gap can

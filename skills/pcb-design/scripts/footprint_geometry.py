@@ -7,6 +7,10 @@ layer), the courtyard, and any board cutout the footprint carries on Edge.Cuts w
 gap to a pad. Compare those numbers with the manufacturer's package drawing and recommended land
 pattern; a name that looks right proves nothing.
 
+It warns when a footprint's name, description or tags call it reverse-mount but it carries no
+Edge.Cuts cutout: such a part needs a hole in the board, and its land pattern follows the
+drawing's bottom view, which is mirrored for a part mounted the other way up.
+
     footprint_geometry.py LED_SMD:LED_SK6812MINI-E_3.2x2.8mm_P1.5mm_ReverseMount
     footprint_geometry.py path/to/Part.kicad_mod
     footprint_geometry.py --pcb PCB/board.kicad_pcb --ref D1     # what is actually on the board
@@ -28,6 +32,7 @@ import argparse
 import json
 import math
 import os
+import re
 import sys
 from dataclasses import asdict, dataclass
 
@@ -39,6 +44,7 @@ DEFAULT_FOOTPRINT_DIRS = [
 
 ROUND = 4  # decimal places used when grouping pads into rows/columns
 ARC_STEPS = 16  # straight segments used to approximate an arc or circle on Edge.Cuts
+REVERSE_MOUNT = re.compile(r"reverse[\s_-]*mount", re.IGNORECASE)
 
 
 # --- S-expression parsing -------------------------------------------------------------------
@@ -321,6 +327,24 @@ def pitches(pads):
     return sorted(found)
 
 
+def described_reverse_mount(footprint):
+    """True when the footprint's name, description or tags call it reverse-mount."""
+    text = [str(footprint[1])] + [_last_text(child(footprint, key)) or "" for key in ("descr", "tags")]
+    return any(REVERSE_MOUNT.search(t) for t in text)
+
+
+def mounting_warnings(footprint, cuts):
+    """What the footprint's own text says about mounting that its geometry contradicts."""
+    if described_reverse_mount(footprint) and not cuts:
+        return ["described as reverse-mount but has no Edge.Cuts cutout. A reverse-mount part's "
+                "body goes through a hole in the board; without one it cannot sit on its pads "
+                "either way up. Its land pattern follows the drawing's bottom view, which is "
+                "mirrored for a part mounted the other way up. Confirm which way the part faces, "
+                "then add the cutout or use a top-mount part and a top-view land pattern. (A cutout "
+                "drawn on the board outline instead of in the footprint is not seen here.)"]
+    return []
+
+
 def measure(footprint, footprint_angle=0.0):
     pads = read_pads(footprint, footprint_angle)
     attr = child(footprint, "attr")
@@ -343,6 +367,7 @@ def measure(footprint, footprint_angle=0.0):
         "courtyard": asdict(b) if (b := layer_box(footprint, "CrtYd")) else None,
         "edge_cuts": asdict(b) if (b := box_of([pt for seg in cuts for pt in seg])) else None,
         "edge_cuts_pad_clearance": {"gap": clearance[0], "pad": clearance[1]} if clearance else None,
+        "warnings": mounting_warnings(footprint, cuts),
     }
 
 
@@ -505,6 +530,7 @@ def format_report(m):
         f"{fmt(b['width'])} x {fmt(b['height'])}, closest pad {c['pad']} at {fmt(c['gap'])} mm "
         "(compare with the fab's copper-to-edge minimum)" if b and c else
         f"{fmt(b['width'])} x {fmt(b['height'])}" if b else "none"))
+    lines += [f"Warning: {w}" for w in m["warnings"]]
     return "\n".join(lines)
 
 
