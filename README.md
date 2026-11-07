@@ -12,8 +12,8 @@ What it covers:
 - **KiCad** for layout, routing, DRC and fab output, synced from Stackup
 - **DC bias checks** across the full supply range against worst-case datasheet limits
 - **SPICE** (ngspice through KiCad's bundled libngspice) for power, latch, sense and enable circuits
-- **Common parts first**: JLCPCB Basic, then Preferred Extended, then Extended, with stock checks at
-  JLCPCB/LCSC, Mouser, DigiKey and Adafruit
+- **Common parts first**: judged by stock at Mouser, DigiKey, LCSC and JLCPCB, weighed equally,
+  with the assembler's preferences (such as JLCPCB's Basic library) as a tie-breaker
 - **MCU pin restrictions** (flash, strapping, input-only, dedicated pins) checked before assignment
 - **Unambiguous BOMs** so a fab can buy exactly the right part
 
@@ -27,8 +27,8 @@ skills/pcb-design/
   scripts/
     stackup_index.py           list the Stackup library's parts and blocks
     datasheet.py               fetch a datasheet once; read tables as text, render only drawings
-    jlc_parts.py               JLCPCB part lookup: LCSC number, tier, stock
-    distributor_stock.py       JLCPCB, Mouser and DigiKey stock and price per MPN (API keys optional)
+    jlc_parts.py               JLCPCB part lookup: LCSC number, tier, JLCPCB stock
+    distributor_stock.py       Mouser, DigiKey, LCSC and JLCPCB stock and price per MPN (API keys optional)
     spice_template.py          copy-and-edit SPICE checks for a power latch (insertion/press/shutdown)
     spice_lib.py               generic models, stimulus, measurements and a corner-matrix runner
     ngspice_harness.py         run ngspice from Python via ctypes
@@ -74,9 +74,9 @@ follow it, reading its references/ and using its scripts/ as it directs.
 
 ### Distributor API keys (optional)
 
-`distributor_stock.py` checks stock and price at JLCPCB, Mouser and DigiKey. JLCPCB needs no key.
-Mouser and DigiKey need free API credentials; without them the script reports those two as
-"no key" and checks JLCPCB only.
+`distributor_stock.py` checks stock and price at Mouser, DigiKey, LCSC and JLCPCB. LCSC and JLCPCB
+need no key. Mouser and DigiKey need free API credentials; without them the script reports those
+two as "no key" and checks LCSC and JLCPCB only, so set them up to get the full picture.
 
 1. Get the credentials:
    - **Mouser**: sign in at the [Mouser API Hub](https://www.mouser.com/api-hub/) and request a

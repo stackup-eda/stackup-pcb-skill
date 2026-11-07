@@ -1,6 +1,6 @@
 ---
 name: pcb-design
-description: Design, change, review, and validate printed circuit boards with KiCad for layout, Stackup (KDL) as the electrical source of truth instead of KiCad schematics, ngspice simulations, and common, well-stocked parts (JLCPCB Basic library first). Use this skill whenever the work touches hardware - picking a component or resistor value, adding or fixing a circuit (power latch, regulator, charger, level shifter, sensor, button, LED), editing a board.kdl/parts.kdl or .kicad_pcb, checking voltages or thresholds, writing a SPICE test, sourcing parts or LCSC numbers, preparing a BOM or fab/assembly order, or reviewing a board before ordering - even if the user never says "PCB" or names a tool.
+description: Design, change, review, and validate printed circuit boards with KiCad for layout, Stackup (KDL) as the electrical source of truth instead of KiCad schematics, ngspice simulations, and common parts stocked across Mouser, DigiKey, LCSC and JLCPCB. Use this skill whenever the work touches hardware - picking a component or resistor value, adding or fixing a circuit (power latch, regulator, charger, level shifter, sensor, button, LED), editing a board.kdl/parts.kdl or .kicad_pcb, checking voltages or thresholds, writing a SPICE test, sourcing parts or LCSC numbers, preparing a BOM or fab/assembly order, or reviewing a board before ordering - even if the user never says "PCB" or names a tool.
 compatibility: Any agent harness that supports Agent Skills (SKILL.md). Scripts need Python 3 (standard library only). Uses KiCad, the Stackup CLI, and KiCad's bundled libngspice when installed.
 ---
 
@@ -23,7 +23,7 @@ level's work. Verification depth stays; what scales is how much gets built aroun
 | Level | Examples | Do | Don't |
 |---|---|---|---|
 | **Question or review** | "is this pull-up OK?", "what should I check before fab?" | Lead with the verdict, then only the numbers and datasheet rows that settle it (grep them with `datasheet.py`; don't read whole documents). A quick question gets under 250 words (the verdict, the numbers that settle it with their table or page, at most two caveats) and about five tool calls: fetch and grep the one document that settles it (`datasheet.py` takes HTML pages too), then answer. If the document won't fetch after one retry, answer anyway and say which numbers are from memory. A design review is longer, but findings come first | Build files, simulations or project scaffolding; look up stock or second sources nobody asked about; list every caveat you can think of; add assumption or bench-check paragraphs a short answer doesn't need |
-| **Part or value change** | swap a FET, change a resistor | DC bias for the touched nodes; the datasheet rows that matter; the new part's pinout from its manufacturer's drawing, cited by page; tier/stock and a second source; edit the placement; `stackup check`; rerun an existing simulation, or run the template if the node is power/latch/enable; tell the user to sync the PCB from Stackup | Download every datasheet on the board, write new tooling, restructure the repo |
+| **Part or value change** | swap a FET, change a resistor | DC bias for the touched nodes; the datasheet rows that matter; the new part's pinout from its manufacturer's drawing, cited by page; stock across distributors (plus the JLCPCB tier if JLCPCB assembles) and a second source; edit the placement; `stackup check`; rerun an existing simulation, or run the template if the node is power/latch/enable; tell the user to sync the PCB from Stackup | Download every datasheet on the board, write new tooling, restructure the repo |
 | **New circuit** | a power latch, a charger, a sensor block | The full workflow below for that circuit, including a simulation built from `scripts/spice_template.py` | CI setup, READMEs, repo layout, unless asked |
 | **Board to fab** | "we're ordering" | The pre-order checks in `references/kicad.md` and `references/bom-and-fab.md`, and the repo conventions at the end | |
 
@@ -33,8 +33,9 @@ the design itself (KDL), the simulation and its results, and data a check needs 
 fetched, the BOM export). When something below the current level is missing (no CI check, no
 datasheet folder, no bench checklist file), mention it in one line instead of building it.
 
-Look things up in batches: `jlc_parts.py A B C --exact --best` (or `distributor_stock.py A B C` for
-Mouser and DigiKey too) checks every part in one call, and
+Look things up in batches: `distributor_stock.py A B C` checks Mouser, DigiKey, LCSC and JLCPCB
+stock for every part in one call (`jlc_parts.py A B C --exact --best` for JLCPCB tiers and LCSC
+numbers), and
 `datasheet.py fetch A=<url> B=<url>` / `grep all <pattern>` fetch and search several datasheets at
 once.
 
@@ -47,7 +48,7 @@ once.
 | Layout, routing, DRC, gerbers | **KiCad** (currently 10) PCB editor | Linked to the KDL by a `.stackup_sch` file; synced with the Stackup plugin |
 | Purchasing BOM | `stackup bom <board.kdl> --locked` | Separate manufacturer / MPN / distributor columns |
 | Circuit simulation | **ngspice** via KiCad's bundled `libngspice` | Python + ctypes; see `scripts/ngspice_harness.py` |
-| Part availability | JLCPCB parts search, then Mouser / DigiKey / Adafruit stock | See `scripts/jlc_parts.py` and `scripts/distributor_stock.py` |
+| Part availability | Mouser, DigiKey, LCSC and JLCPCB stock, weighed equally | See `scripts/distributor_stock.py`; `scripts/jlc_parts.py` for JLCPCB tiers and LCSC numbers |
 
 Bundled scripts (use them instead of writing your own):
 
@@ -55,8 +56,8 @@ Bundled scripts (use them instead of writing your own):
 |---|---|
 | `stackup_index.py [filter]` | list the library's parts and blocks, with packages, MPNs, features and parameters |
 | `datasheet.py fetch/sections/grep/page` | download datasheets once (several per call), read tables as text across all of them, render only drawing pages |
-| `jlc_parts.py <MPN> [<MPN>…] --best` | LCSC number, JLCPCB tier and stock for one or many parts |
-| `distributor_stock.py <MPN> [<MPN>…]` | JLCPCB, Mouser and DigiKey stock and price, one line per part (Mouser/DigiKey need free API keys; without them it reports JLCPCB only) |
+| `distributor_stock.py <MPN> [<MPN>…]` | Mouser, DigiKey, LCSC and JLCPCB stock and price, one line per part (Mouser/DigiKey need free API keys; without them, check those two another way) |
+| `jlc_parts.py <MPN> [<MPN>…] --best` | LCSC number, JLCPCB tier and JLCPCB stock for one or many parts; keyword search of JLCPCB's library |
 | `spice_template.py` + `spice_lib.py` + `ngspice_harness.py` | simulate a circuit: copy the template, edit values, netlist, limits and checks |
 | `bom_check.py` | check a `stackup bom` export for blank or ambiguous lines |
 | `footprint_geometry.py` | measure footprints (fields, pads, body, Edge.Cuts cutout) to compare against the package drawing; `--pins` checks pad numbers against the datasheet's pin table |
@@ -73,8 +74,9 @@ Work through these in order. Skipping ahead to layout is how bad boards get made
    has USB feeding the rail through a charger), loads, what drives each input, and every power state
    (off, idle, on, charging, MCU unpowered).
 2. **Choose parts** by the sourcing order in [references/parts-sourcing.md](references/parts-sourcing.md):
-   a widely made part first, JLCPCB Basic before Extended, confirmed in stock, reusing part numbers
-   already on the board, and with standard stocked values. Get the
+   a widely made part first, confirmed in stock at several of Mouser, DigiKey, LCSC and JLCPCB,
+   reusing part numbers already on the board, and with standard stocked values. The assembler adds
+   its own tie-breakers (at JLCPCB, Basic before Extended). Get the
    manufacturer's datasheet and verify the part's requirements against it (see the datasheet rule
    below) before designing around it. For an MCU or module, classify its pins before assigning
    any ([references/mcu-pins.md](references/mcu-pins.md)).
@@ -158,8 +160,9 @@ When proposing or finishing hardware work, give the user:
 
 - the numbers: node voltages across the supply range, thresholds with their datasheet source, currents;
 - what the simulation showed, including surprises, and which models were generic;
-- part choices with manufacturer, MPN, package, JLCPCB tier and stock, and at least one second
-  source for anything that isn't generic;
+- part choices with manufacturer, MPN, package, stock at Mouser, DigiKey, LCSC and JLCPCB with the
+  date checked (and the JLCPCB tier when JLCPCB assembles), and at least one second source for
+  anything that isn't generic;
 - what is unverified, and the bench checklist;
 - the steps left for the user: after any placement, footprint or net change, sync the PCB from
   Stackup with the plugin and rerun DRC, plus any simulation or check you didn't run.

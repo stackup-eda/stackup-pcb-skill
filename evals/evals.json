@@ -4,7 +4,7 @@
     {
       "id": 1,
       "prompt": "I need a soft power switch for a board running off a single 18650. A momentary button should turn on a 3.3V buck (TLV62569), and the ESP32-S3 should hold it on and read the button to shut down. Pick the parts and write the Stackup KDL for it.",
-      "expected_output": "DC bias table across 3.0-4.5V with worst-case FET thresholds, a defined rest state for the buck EN pin, button sense kept within the MCU rail, parts with manufacturer/MPN/LCSC and JLCPCB tier, KDL placements and circuits, and a SPICE harness covering insertion, press at low battery, and shutdown.",
+      "expected_output": "DC bias table across 3.0-4.5V with worst-case FET thresholds, a defined rest state for the buck EN pin, button sense kept within the MCU rail, parts with manufacturer/MPN and stock across distributors, KDL placements and circuits, and a SPICE harness covering insertion, press at low battery, and shutdown.",
       "files": [],
       "assertions": [
         "Shows node voltages for the latch/EN/sense nodes at the low end (3.0 V) and high end (4.2 or 4.5 V) of the supply",
@@ -13,7 +13,7 @@
         "Keeps the button-sense GPIO within the ESP32-S3's 3.3 V rail in every supply state (no pull-up to VSYS/battery)",
         "Chooses ESP32-S3 GPIOs that avoid strapping, flash/PSRAM and USB pins, or explicitly justifies any exception",
         "Every placement in the KDL has manufacturer and MPN",
-        "Reports JLCPCB library tier (Basic/Extended) and stock for the chosen parts",
+        "Reports stock for the chosen parts at more than one distributor (Mouser, DigiKey, LCSC, JLCPCB), or says which it could not check, rather than treating JLCPCB alone as the measure of availability",
         "Ran stackup check on the design and it reports 0 errors",
         "Ran a SPICE simulation covering at least battery insertion and a button press at the lowest supply",
         "Cites manufacturer datasheets (table/section) for the thresholds used"
@@ -196,7 +196,7 @@
         "evals/files/latch/manifest.kdl"
       ],
       "assertions": [
-        "Looks up the candidates' JLCPCB tier and stock in batched calls, several MPNs per jlc_parts.py call (graded from the transcript)",
+        "Looks up the candidates' JLCPCB tier and stock in batched calls, several MPNs per jlc_parts.py or distributor_stock.py call (graded from the transcript)",
         "Confirms the candidate's SOT-23 pinout (G1 S2 D3) from the manufacturer's drawing",
         "Checks the candidate against the circuit: |Vgs(th)| max below the gate drive at VSYS 3.0 V, Rds(on) specified at |Vgs| of 2.5 V or less, and Vds rating well above 4.5 V",
         "Checks the off state (R_GATE1 holds the gate at VSYS) against the candidate's leakage",

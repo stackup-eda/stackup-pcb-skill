@@ -121,8 +121,9 @@ package that can't be read from the footprint or value, and values that would fo
 `--long-values` also requires each value to carry its MPN, for fabs that read only the Value
 column. Run it in CI too. It reads the BOM through `stackup bom --locked` (so library defaults are
 included) rather than parsing the KDL. To fill the gaps it finds, use
-[../scripts/jlc_parts.py](../scripts/jlc_parts.py) to find LCSC numbers and Basic-library
-alternatives (pass every MPN in one call with `--exact --best`), and have a human review matches before writing them into the KDL.
+[../scripts/jlc_parts.py](../scripts/jlc_parts.py) to find LCSC numbers (and, for JLCPCB
+assembly, Basic-library alternatives; pass every MPN in one call with `--exact --best`) and
+[../scripts/distributor_stock.py](../scripts/distributor_stock.py) for stock at every distributor, and have a human review matches before writing them into the KDL.
 
 ## After any part change
 

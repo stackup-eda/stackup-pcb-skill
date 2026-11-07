@@ -1,12 +1,17 @@
 #!/usr/bin/env python3
-"""Check JLCPCB, Mouser and DigiKey stock and price for one or more exact MPNs, one line each.
+"""Check Mouser, DigiKey, LCSC and JLCPCB stock and price for one or more exact MPNs, one line each.
 
-    python3 distributor_stock.py TCAN1044AVDRQ1                    # all three distributors
+No one distributor is the reference: a part is common when several of them stock it.
+
+    python3 distributor_stock.py TCAN1044AVDRQ1                    # all four distributors
     python3 distributor_stock.py AO3400A AO3401A TLV62569DBVR      # a whole BOM, one line each
     python3 distributor_stock.py AO3401A --sources mouser,digikey  # skip some distributors
     python3 distributor_stock.py AO3401A --json                    # every field, machine-readable
 
-JLCPCB needs no key (it uses jlc_parts.py). Mouser and DigiKey need free API credentials, read from
+LCSC and JLCPCB need no key. JLCPCB's parts search (jlc_parts.py) finds the part's LCSC numbers,
+since the two share them; LCSC's own product data then gives its store stock and price, which is a
+separate inventory from JLCPCB's assembly stock. A part LCSC sells that JLCPCB's search doesn't
+return shows as "not listed" at both. Mouser and DigiKey need free API credentials, read from
 environment variables first and then from a key file (default ~/.config/pcb-design/api-keys.env,
 or the path in PCB_DESIGN_KEYS / --keys), one KEY=value per line:
 
@@ -22,7 +27,9 @@ Read the numbers carefully:
   quantity; that is real, not an access problem. When every part looks out of stock, check a part
   that is surely stocked before suspecting the lookup.
 - "on order" is the distributor's incoming quantity and date, not a promise.
-- Prices are the quantity-1 price in USD. Stock moves daily: quote it with the date checked.
+- Prices are in USD at the smallest price break: quantity 1 at Mouser and DigiKey, LCSC's minimum
+  order (often 5 or 10) at LCSC. JLCPCB's search gives no price here. Stock moves daily: quote it
+  with the date checked.
 """
 from __future__ import annotations
 
@@ -41,11 +48,15 @@ import jlc_parts  # noqa: E402
 
 DEFAULT_KEY_FILE = Path.home() / ".config" / "pcb-design" / "api-keys.env"
 KEY_NAMES = ("MOUSER_API_KEY", "DIGIKEY_CLIENT_ID", "DIGIKEY_CLIENT_SECRET")
-SOURCES = ("jlc", "mouser", "digikey")
+SOURCES = ("mouser", "digikey", "lcsc", "jlc")
 
 MOUSER_URL = "https://api.mouser.com/api/v1/search/partnumber"
 DIGIKEY_TOKEN_URL = "https://api.digikey.com/v1/oauth2/token"
 DIGIKEY_DETAILS_URL = "https://api.digikey.com/products/v4/search/{}/productdetails"
+LCSC_DETAIL_URL = "https://wmsc.lcsc.com/ftps/wm/product/detail?productCode={}"
+LCSC_PRODUCT_URL = "https://www.lcsc.com/product-detail/{}.html"
+LCSC_HEADERS = {"Accept": "application/json", "User-Agent": "Mozilla/5.0 (compatible; pcb-design-skill/1.0)"}
+LCSC_MAX_CODES = 3  # an MPN rarely has more LCSC numbers than this; each one is a request
 
 
 class DistributorError(Exception):
@@ -222,13 +233,58 @@ def digikey_parse(data, mpn):
     }
 
 
+# LCSC
+
+def lcsc_fetch(code, http=_request):
+    """LCSC's product record for one LCSC number, or None if LCSC has no such product."""
+    data = http(LCSC_DETAIL_URL.format(urllib.parse.quote(code, safe="")), headers=LCSC_HEADERS)
+    if data is None:
+        return None
+    if data.get("code") != 200:
+        raise DistributorError(f"LCSC returned code {data.get('code')}: {data.get('msg')}")
+    return data.get("result")
+
+
+def lcsc_parse(product, mpn):
+    """The listing for an exact MPN, or None if the product is missing or is another part."""
+    if not product or jlc_parts.normalize(product.get("productModel")) != jlc_parts.normalize(mpn):
+        return None
+    breaks = sorted(product.get("productPriceList") or [], key=lambda b: b.get("ladder") or 0)
+    cycle = product.get("productCycle") or ""
+    code = product.get("productCode", "")
+    return {
+        "sku": code,
+        "mpn": product.get("productModel", ""),
+        "manufacturer": product.get("brandNameEn", ""),
+        "stock": int(product.get("stockNumber") or 0),
+        "price": breaks[0].get("usdPrice") if breaks else None,
+        "min_order": product.get("minBuyNumber"),
+        "on_order": [],
+        "lead_time": "",
+        "status": "" if cycle == "normal" else cycle,
+        "url": LCSC_PRODUCT_URL.format(code) if code else "",
+    }
+
+
+def lcsc_lookup(mpn, jlc_matches, http=_request):
+    """LCSC's listing with the most stock among the LCSC numbers JLCPCB's search found for an MPN."""
+    codes = [p["lcsc"] for p in jlc_matches if p.get("lcsc")][:LCSC_MAX_CODES]
+    listings = [listing for listing in (lcsc_parse(lcsc_fetch(code, http), mpn) for code in codes)
+                if listing]
+    return max(listings, key=lambda r: r["stock"]) if listings else None
+
+
 # JLCPCB
 
-def jlc_lookup(mpn, search_fn=None):
-    parts = jlc_parts.select((search_fn or jlc_parts.search)(mpn), mpn=mpn)
-    if not parts:
+def jlc_matches(mpn, search_fn=None):
+    """JLCPCB parts-search listings whose model is exactly this MPN, best tier first."""
+    return jlc_parts.select((search_fn or jlc_parts.search)(mpn), mpn=mpn)
+
+
+def jlc_lookup(matches):
+    if not matches:
         return None
-    p = parts[0]
+    p = matches[0]
     return {"sku": p["lcsc"], "mpn": p["mpn"], "manufacturer": p["manufacturer"], "stock": p["stock"],
             "price": None, "on_order": [], "lead_time": "", "status": p["tier"], "url": p["url"]}
 
@@ -236,7 +292,7 @@ def jlc_lookup(mpn, search_fn=None):
 # Batch lookup
 
 def lookup_all(mpns, keys, sources=SOURCES, delay=0.3, mouser_http=_request, digikey=None,
-               jlc_search=None):
+               jlc_search=None, lcsc_http=_request):
     """{mpn: {source: listing | None | {"error": ...} | {"skipped": ...}}} in query order."""
     if "digikey" in sources and digikey is None and {"DIGIKEY_CLIENT_ID", "DIGIKEY_CLIENT_SECRET"} <= keys.keys():
         digikey = DigiKey(keys)
@@ -245,10 +301,19 @@ def lookup_all(mpns, keys, sources=SOURCES, delay=0.3, mouser_http=_request, dig
         if i and delay:
             time.sleep(delay)
         row = {}
+        found = {}  # JLCPCB's search, shared by the JLCPCB and LCSC columns
+
+        def matches():
+            if "jlc" not in found:
+                found["jlc"] = jlc_matches(mpn, jlc_search)
+            return found["jlc"]
+
         for source in sources:
             try:
                 if source == "jlc":
-                    row[source] = jlc_lookup(mpn, jlc_search)
+                    row[source] = jlc_lookup(matches())
+                elif source == "lcsc":
+                    row[source] = lcsc_lookup(mpn, matches(), lcsc_http)
                 elif source == "mouser":
                     if "MOUSER_API_KEY" not in keys:
                         row[source] = {"skipped": "no key"}
@@ -281,8 +346,8 @@ def _cell(listing):
 
 
 def format_table(results, sources=SOURCES):
-    names = {"jlc": "JLCPCB", "mouser": "Mouser", "digikey": "DigiKey"}
-    widths = {"jlc": 38, "mouser": 22, "digikey": 22}
+    names = {"mouser": "Mouser", "digikey": "DigiKey", "lcsc": "LCSC", "jlc": "JLCPCB"}
+    widths = {"mouser": 22, "digikey": 22, "lcsc": 22, "jlc": 38}
     header = (f"{'MPN':22} " + " ".join(f"{names[s]:{widths[s]}}" for s in sources) + " Notes").rstrip()
     rows = [header]
     for mpn, row in results.items():
