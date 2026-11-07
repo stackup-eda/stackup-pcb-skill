@@ -47,6 +47,26 @@ def jlc_listing(code="C3234993", model="TCAN1044AVDRQ1", stock=2060):
             "componentSpecificationEn": "SOIC-8"}
 
 
+# Trimmed from a real wmsc.lcsc.com product-detail response.
+def lcsc_response(code="C3234993", model="TCAN1044AVDRQ1", stock=1830, cycle="normal"):
+    return {"code": 200, "msg": None, "ok": True, "result": {
+        "productCode": code, "productModel": model, "brandNameEn": "TI", "encapStandard": "SOIC-8",
+        "minBuyNumber": 5, "stockNumber": stock, "productCycle": cycle,
+        "productPriceList": [{"ladder": 50, "usdPrice": 0.61}, {"ladder": 5, "usdPrice": 0.72}]}}
+
+
+def lcsc_http(responses):
+    """A fake LCSC endpoint: {code: response}; unknown codes get LCSC's empty result."""
+    calls = []
+
+    def http(url, data=None, headers=None):
+        code = url.rsplit("=", 1)[1]
+        calls.append(code)
+        return responses.get(code, {"code": 200, "msg": None, "ok": True, "result": None})
+    http.calls = calls
+    return http
+
+
 class KeyTests(unittest.TestCase):
     def test_parse_key_file(self):
         text = "# comment\n\nexport MOUSER_API_KEY='abc'\nDIGIKEY_CLIENT_ID = \"id\"\nJUNK\n"
@@ -156,6 +176,50 @@ class DigiKeyTests(unittest.TestCase):
         self.assertIn("MMBT3904%28RANGE%3A100-300%29%2FX", urls[0])
 
 
+class LcscTests(unittest.TestCase):
+    def test_parse_exact_listing(self):
+        listing = d.lcsc_parse(lcsc_response()["result"], "tcan1044avdrq1")
+        self.assertEqual(listing["sku"], "C3234993")
+        self.assertEqual(listing["stock"], 1830)
+        self.assertEqual(listing["price"], 0.72)  # the smallest break, not the first listed
+        self.assertEqual(listing["min_order"], 5)
+        self.assertEqual(listing["status"], "")
+        self.assertEqual(listing["url"], "https://www.lcsc.com/product-detail/C3234993.html")
+
+    def test_other_mpn_or_missing_is_not_listed(self):
+        self.assertIsNone(d.lcsc_parse(None, "X"))
+        self.assertIsNone(d.lcsc_parse(lcsc_response(model="TCAN1044VDRQ1")["result"], "TCAN1044AVDRQ1"))
+
+    def test_no_stock_is_zero_and_lifecycle_is_shown(self):
+        listing = d.lcsc_parse(lcsc_response(stock=None, cycle="discontinued")["result"], "TCAN1044AVDRQ1")
+        self.assertEqual(listing["stock"], 0)
+        self.assertEqual(listing["status"], "discontinued")
+
+    def test_fetch_raises_on_error_code_and_sends_client_name(self):
+        seen = []
+
+        def http(url, data=None, headers=None):
+            seen.append((url, headers))
+            return {"code": 500, "msg": "busy"}
+        with self.assertRaisesRegex(d.DistributorError, "LCSC returned code 500: busy"):
+            d.lcsc_fetch("C15127", http)
+        self.assertTrue(seen[0][0].endswith("productCode=C15127"))
+        self.assertIn("pcb-design-skill", seen[0][1]["User-Agent"])
+
+    def test_lookup_picks_most_stock_and_caps_requests(self):
+        matches = [{"lcsc": f"C{i}"} for i in range(1, 6)]
+        http = lcsc_http({"C1": lcsc_response("C1", stock=10), "C2": lcsc_response("C2", stock=500),
+                          "C3": lcsc_response("C3", model="OTHER", stock=9999)})
+        listing = d.lcsc_lookup("TCAN1044AVDRQ1", matches, http)
+        self.assertEqual(listing["sku"], "C2")
+        self.assertEqual(http.calls, ["C1", "C2", "C3"])
+
+    def test_lookup_with_no_lcsc_numbers_is_not_listed(self):
+        http = lcsc_http({})
+        self.assertIsNone(d.lcsc_lookup("X", [], http))
+        self.assertEqual(http.calls, [])
+
+
 class BatchTests(unittest.TestCase):
     def fake_digikey(self, quantity=None, error=None):
         dk = mock.Mock()
@@ -166,13 +230,42 @@ class BatchTests(unittest.TestCase):
         return dk
 
     def test_all_sources(self):
+        searches = []
+
+        def jlc_search(mpn):
+            searches.append(mpn)
+            return [jlc_listing()]
         results = d.lookup_all(["TCAN1044AVDRQ1"], KEYS, delay=0,
                                mouser_http=lambda url, data=None, headers=None: mouser_response(),
-                               digikey=self.fake_digikey(), jlc_search=lambda mpn: [jlc_listing()])
+                               digikey=self.fake_digikey(), jlc_search=jlc_search,
+                               lcsc_http=lcsc_http({"C3234993": lcsc_response()}))
         row = results["TCAN1044AVDRQ1"]
+        self.assertEqual(list(row), ["mouser", "digikey", "lcsc", "jlc"])
         self.assertEqual(row["jlc"]["sku"], "C3234993")
+        self.assertEqual(row["jlc"]["stock"], 2060)  # JLCPCB's assembly stock...
+        self.assertEqual(row["lcsc"]["stock"], 1830)  # ...is not LCSC's store stock
         self.assertEqual(row["mouser"]["stock"], 4714)
         self.assertEqual(row["digikey"]["stock"], 0)
+        self.assertEqual(searches, ["TCAN1044AVDRQ1"])  # one JLCPCB search serves both columns
+
+    def test_lcsc_works_without_any_keys(self):
+        results = d.lookup_all(["TCAN1044AVDRQ1"], {}, delay=0, jlc_search=lambda mpn: [jlc_listing()],
+                               lcsc_http=lcsc_http({"C3234993": lcsc_response()}))
+        row = results["TCAN1044AVDRQ1"]
+        self.assertEqual(row["mouser"], {"skipped": "no key"})
+        self.assertEqual(row["digikey"], {"skipped": "no key"})
+        self.assertEqual(row["lcsc"]["stock"], 1830)
+        self.assertEqual(row["jlc"]["stock"], 2060)
+
+    def test_failed_jlc_search_fails_lcsc_too_without_stopping_others(self):
+        def jlc_search(mpn):
+            raise RuntimeError("JLC search returned code 500: down")
+        results = d.lookup_all(["X"], {"MOUSER_API_KEY": "k"}, sources=("mouser", "lcsc", "jlc"), delay=0,
+                               mouser_http=lambda url, data=None, headers=None: mouser_response(mpn="X"),
+                               jlc_search=jlc_search, lcsc_http=lcsc_http({}))
+        self.assertEqual(results["X"]["mouser"]["stock"], 4714)
+        self.assertIn("error", results["X"]["lcsc"])
+        self.assertIn("error", results["X"]["jlc"])
 
     def test_missing_keys_are_skipped_not_failed(self):
         results = d.lookup_all(["X"], {}, sources=("mouser", "digikey"), delay=0)
@@ -191,14 +284,17 @@ class BatchTests(unittest.TestCase):
                                mouser_http=lambda url, data=None, headers=None:
                                    mouser_response() if "TCAN" in json.loads(data)["SearchByPartRequest"]["mouserPartNumber"] else {"Errors": [], "SearchResults": {"Parts": []}},
                                digikey=self.fake_digikey(quantity=2540),
-                               jlc_search=lambda mpn: [jlc_listing()] if mpn.startswith("TCAN") else [])
+                               jlc_search=lambda mpn: [jlc_listing()] if mpn.startswith("TCAN") else [],
+                               lcsc_http=lcsc_http({"C3234993": lcsc_response()}))
         results["NOPE"]["digikey"] = None
         lines = d.format_table(results).splitlines()
+        self.assertEqual(lines[0].split()[:5], ["MPN", "Mouser", "DigiKey", "LCSC", "JLCPCB"])
         self.assertIn("C3234993 2,060 (Extended)", lines[1])
         self.assertIn("4,714 @ $1.05", lines[1])
         self.assertIn("2,540 @ $1.05", lines[1])
+        self.assertIn("1,830 @ $0.72", lines[1])
         self.assertIn("Mouser 37,500 on order 2026-11-26", lines[1])
-        self.assertEqual(lines[2].split()[1:], ["not", "listed"] * 3)
+        self.assertEqual(lines[2].split()[1:], ["not", "listed"] * 4)
         self.assertEqual(lines[2], lines[2].rstrip())
 
 

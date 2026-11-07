@@ -148,8 +148,9 @@ whether a few millimetres or a layer count change would move the board into a ch
    and polarity marks where the assembler will look.
 7. BOM and position files regenerated (see [bom-and-fab.md](bom-and-fab.md)); the designators in the
    BOM and the placement (CPL) file match each other and the board, excluding DNP parts.
-8. Stock re-checked for every BOM line on the day of the order (`jlc_parts.py` with every MPN in one
-   call, `--exact --best`), with a second source ready for anything short. Stock found at design
+8. Stock re-checked for every BOM line on the day of the order (`distributor_stock.py` with every
+   MPN in one call), at the distributors the parts will actually come from (JLCPCB's own stock for
+   JLCPCB assembly), with a second source ready for anything short. Stock found at design
    time doesn't count ([parts-sourcing.md](parts-sourcing.md#availability-checks)).
 9. Gerbers opened in a viewer: every layer present, drills on pads, paste only on SMD pads.
 10. The DC-bias and SPICE results for changed circuits are recorded, and the bench checklist is
